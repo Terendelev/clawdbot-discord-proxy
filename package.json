@@ -1,0 +1,36 @@
+{
+  "name": "clawdbot-discord",
+  "version": "1.0.0",
+  "description": "Clawdbot Discord plugin with proxy support",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "test:unit": "jest --testPathPattern=tests/unit",
+    "test:integration": "jest --testPathPattern=tests/integration",
+    "lint": "eslint src/**/*.ts",
+    "dev": "ts-node src/index.ts"
+  },
+  "keywords": [
+    "discord",
+    "clawdbot",
+    "plugin",
+    "openclaw"
+  ],
+  "author": "Yoimiya",
+  "license": "MIT",
+  "dependencies": {
+    "proxy-agent": "^6.4.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.0",
+    "@types/ws": "^8.5.10",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
