@@ -16,19 +16,33 @@
   "repository": "",
   "configSchema": {
     "type": "object",
+    "additionalProperties": false,
     "properties": {
-      "enabled": { "type": "boolean", "default": false },
-      "token": { "type": "string" },
-      "proxyUrl": { "type": "string" },
+      "token": {
+        "type": "string",
+        "description": "Discord bot token"
+      },
+      "proxyUrl": {
+        "type": "string",
+        "description": "Proxy URL (http, https, socks)"
+      },
       "intents": {
         "type": "array",
         "items": { "type": "string" },
+        "description": "Gateway intents",
         "default": ["GUILD_MESSAGES", "DIRECT_MESSAGES", "MESSAGE_CONTENT"]
       },
-      "autoReconnect": { "type": "boolean", "default": true },
-      "heartbeatInterval": { "type": "number", "default": 45000 }
+      "autoReconnect": {
+        "type": "boolean",
+        "description": "Auto reconnect on disconnect",
+        "default": true
+      },
+      "heartbeatInterval": {
+        "type": "number",
+        "description": "Heartbeat interval in milliseconds",
+        "default": 45000
+      }
     },
-    "required": ["token"],
-    "additionalProperties": false
+    "required": ["token"]
   }
 }

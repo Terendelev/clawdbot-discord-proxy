@@ -20,22 +20,28 @@ npm run test
 
 ## Configuration
 
-### Plugin Configuration
+### OpenClaw Configuration
+
+Add to your `openclaw.json`:
 
 ```json
 {
-  "channels": {
-    "clawdbot-discord-proxy": {
-      "enabled": true,
-      "token": "${DISCORD_TOKEN}",
-      "proxyUrl": "${DISCORD_PROXY}",
-      "intents": [
-        "GUILD_MESSAGES",
-        "DIRECT_MESSAGES",
-        "MESSAGE_CONTENT"
-      ],
-      "autoReconnect": true,
-      "heartbeatInterval": 45000
+  "plugins": {
+    "entries": {
+      "clawdbot-discord-proxy": {
+        "enabled": true,
+        "config": {
+          "token": "${DISCORD_TOKEN}",
+          "proxyUrl": "${DISCORD_PROXY}",
+          "intents": [
+            "GUILD_MESSAGES",
+            "DIRECT_MESSAGES",
+            "MESSAGE_CONTENT"
+          ],
+          "autoReconnect": true,
+          "heartbeatInterval": 45000
+        }
+      }
     }
   }
 }
