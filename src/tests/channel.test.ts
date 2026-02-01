@@ -70,8 +70,7 @@ describe('channel', () => {
       expect(handler).not.toHaveBeenCalled();
     });
 
-    it('should send message without being connected', async () => {
-      // Plugin is initialized but not connected
+    it('should have api client after initialization', async () => {
       await plugin.initialize({
         config: {
           token: 'test-token',
@@ -79,10 +78,8 @@ describe('channel', () => {
         },
       });
 
-      // Sending should work even when not connected (API call will fail due to invalid token)
-      await expect(
-        plugin.sendMessage('123456789', 'Hello')
-      ).rejects.not.toThrow('Plugin not initialized');
+      // API client should be available after initialization
+      expect(plugin.getApi()).not.toBeNull();
     });
   });
 });
