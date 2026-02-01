@@ -43,6 +43,6 @@
         "default": 45000
       }
     },
-    "required": ["token"]
+    "required": []
   }
 }
