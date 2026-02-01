@@ -25,7 +25,7 @@ npm run test
 ```json
 {
   "channels": {
-    "discord": {
+    "clawdbot-discord-proxy": {
       "enabled": true,
       "token": "${DISCORD_TOKEN}",
       "proxyUrl": "${DISCORD_PROXY}",
