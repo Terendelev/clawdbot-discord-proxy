@@ -4,6 +4,11 @@
   "description": "Clawdbot Discord plugin with proxy support",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
   "scripts": {
     "build": "tsc",
     "test": "jest",

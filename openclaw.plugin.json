@@ -1,15 +1,34 @@
 {
+  "id": "discord",
   "name": "clawdbot-discord",
   "version": "1.0.0",
   "description": "Discord plugin with proxy support for Clawdbot",
   "author": "Yoimiya",
   "license": "MIT",
   "type": "channel",
+  "channels": ["discord"],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "engines": {
     "openclaw": ">=1.0.0"
   },
   "keywords": ["discord", "channel", "proxy"],
-  "repository": ""
+  "repository": "",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "enabled": { "type": "boolean", "default": false },
+      "token": { "type": "string" },
+      "proxyUrl": { "type": "string" },
+      "intents": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": ["GUILD_MESSAGES", "DIRECT_MESSAGES", "MESSAGE_CONTENT"]
+      },
+      "autoReconnect": { "type": "boolean", "default": true },
+      "heartbeatInterval": { "type": "number", "default": 45000 }
+    },
+    "required": ["token"],
+    "additionalProperties": false
+  }
 }
