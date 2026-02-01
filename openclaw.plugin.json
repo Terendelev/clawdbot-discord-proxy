@@ -1,5 +1,5 @@
 {
-  "id": "discord",
+  "id": "clawdbot-discord-proxy",
   "name": "clawdbot-discord",
   "version": "1.0.0",
   "description": "Discord plugin with proxy support for Clawdbot",
