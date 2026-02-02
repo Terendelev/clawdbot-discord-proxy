@@ -31,6 +31,14 @@ interface DiscordAccount {
 
 interface DiscordChannelConfig {
   accounts?: Record<string, DiscordAccount>;
+  proxyConfig?: {
+    httpUrl?: string;
+    httpsUrl?: string;
+    wsUrl?: string;
+    wssUrl?: string;
+    noProxy?: string[];
+  };
+  proxyUrl?: string;
 }
 
 // List account IDs from config
@@ -51,19 +59,10 @@ function isConfigured(account: DiscordAccount): boolean {
   return Boolean(account?.token?.trim());
 }
 
-// Describe account status
-function describeAccount(account: DiscordAccount): {
-  accountId: string;
-  name: string | undefined;
-  enabled: boolean;
-  configured: boolean;
-} {
-  return {
-    accountId: account?.accountId ?? 'default',
-    name: account?.name,
-    enabled: account?.enabled ?? true,
-    configured: isConfigured(account),
-  };
+// Get proxy URL from config
+function getProxyUrl(cfg: Record<string, unknown>): string | undefined {
+  const channelCfg = (cfg.channels as Record<string, DiscordChannelConfig>)?.[PLUGIN_ID];
+  return channelCfg?.proxyConfig?.httpsUrl ?? channelCfg?.proxyUrl;
 }
 
 // Runtime state for each account
@@ -108,7 +107,12 @@ const discordPlugin = {
     resolveAccount,
     defaultAccountId: () => 'default',
     isConfigured,
-    describeAccount,
+    describeAccount: (account: DiscordAccount) => ({
+      accountId: account?.accountId ?? 'default',
+      name: account?.name,
+      enabled: account?.enabled ?? true,
+      configured: isConfigured(account),
+    }),
   },
   outbound: {
     deliveryMode: 'direct',
@@ -124,9 +128,7 @@ const discordPlugin = {
       const runtime = getRuntime(accountId ?? 'default');
 
       if (!runtime.api) {
-        const channelCfg = (cfg.channels as Record<string, Record<string, unknown>>)?.[PLUGIN_ID] ?? {};
-        const proxyUrl = (channelCfg.proxyConfig as Record<string, string>)?.httpsUrl
-          ?? channelCfg.proxyUrl;
+        const proxyUrl = getProxyUrl(cfg);
         runtime.api = createApi(account.token!, proxyUrl);
       }
 
@@ -138,12 +140,71 @@ const discordPlugin = {
       }
     },
   },
+  gateway: {
+    start: async ({ accountId, cfg }: { accountId?: string; cfg: Record<string, unknown> }) => {
+      const account = resolveAccount(cfg, accountId);
+      const runtime = getRuntime(accountId ?? 'default');
+      const proxyUrl = getProxyUrl(cfg);
+
+      // Create gateway
+      const pluginConfig: DiscordPluginConfig = {
+        ...DEFAULT_CONFIG,
+        token: account.token!,
+        proxyUrl,
+        intents: [
+          GatewayIntent.GUILDS,
+          GatewayIntent.GUILD_MESSAGES,
+          GatewayIntent.DIRECT_MESSAGES,
+          GatewayIntent.MESSAGE_CONTENT,
+        ],
+        autoReconnect: true,
+        heartbeatInterval: 45000,
+      };
+
+      runtime.gateway = createGateway(pluginConfig);
+
+      // Set up event handlers
+      runtime.gateway.on('ready', () => {
+        runtime.connected = true;
+        console.log(`[${PLUGIN_ID}] Connected to Discord`);
+      });
+
+      runtime.gateway.on('message', (message: DiscordMessage) => {
+        console.log(`[${PLUGIN_ID}] Received message from ${message.author.username}: ${message.content?.substring(0, 50)}...`);
+      });
+
+      runtime.gateway.on('error', (error: Error) => {
+        console.error(`[${PLUGIN_ID}] Gateway error:`, error.message);
+        runtime.connected = false;
+      });
+
+      runtime.gateway.on('closed', () => {
+        runtime.connected = false;
+        console.log(`[${PLUGIN_ID}] Gateway closed`);
+      });
+
+      // Connect
+      await runtime.gateway.connect();
+      return { ok: true };
+    },
+    stop: async ({ accountId }: { accountId?: string }) => {
+      const runtime = getRuntime(accountId ?? 'default');
+      if (runtime.gateway) {
+        await runtime.gateway.disconnect();
+        runtime.gateway = null;
+        runtime.connected = false;
+      }
+      return { ok: true };
+    },
+    isRunning: ({ accountId }: { accountId?: string }) => {
+      const runtime = getRuntime(accountId ?? 'default');
+      return runtime.connected;
+    },
+  },
   status: {
     describeAccount: (account: DiscordAccount, cfg: Record<string, unknown>) => {
       const runtime = getRuntime(account.accountId ?? 'default');
-      const channelCfg = (cfg.channels as Record<string, Record<string, unknown>>)?.[PLUGIN_ID] ?? {};
-      const proxyUrl = (channelCfg.proxyConfig as Record<string, string>)?.httpsUrl
-        ?? channelCfg.proxyUrl;
+      const proxyUrl = getProxyUrl(cfg);
 
       return {
         accountId: account.accountId ?? 'default',
