@@ -6,9 +6,8 @@ Discord channel plugin with proxy support for Clawdbot.
 
 - **WebSocket Gateway Connection** - Connect to Discord's real-time Gateway with heartbeat and auto-reconnect
 - **REST API Support** - Full REST API wrapper for Discord endpoints
-- **Proxy Support** - Connect through HTTP/HTTPS/SOCKS proxies using `proxy-agent`
 - **Message Handling** - Send/receive messages, reactions, and manage channels
-- **Configuration Migration** - Built-in support for config format migration
+- **Group & DM Support** - Server channels and direct messages with flexible policies
 
 ## Quick Start
 
@@ -20,27 +19,18 @@ npm run test
 
 ## Configuration
 
-### OpenClaw Configuration
-
-Add to your `openclaw.json`:
+Add to your Clawdbot configuration file (e.g., `~/.clawdbot/clawdbot-proxy.json`):
 
 ```json
 {
-  "plugins": {
-    "entries": {
-      "clawdbot-discord-proxy": {
-        "enabled": true,
-        "config": {
-          "token": "${DISCORD_TOKEN}",
-          "proxyUrl": "${DISCORD_PROXY}",
-          "intents": [
-            "GUILD_MESSAGES",
-            "DIRECT_MESSAGES",
-            "MESSAGE_CONTENT"
-          ],
-          "autoReconnect": true,
-          "heartbeatInterval": 45000
-        }
+  "channels": {
+    "discord": {
+      "enabled": true,
+      "token": "${DISCORD_TOKEN}",
+      "groupPolicy": "open",
+      "dm": {
+        "policy": "pairing",
+        "allowFrom": ["*"]
       }
     }
   }
@@ -52,17 +42,16 @@ Add to your `openclaw.json`:
 | Variable | Description |
 |----------|-------------|
 | `DISCORD_TOKEN` | Discord bot token |
-| `DISCORD_PROXY` | Proxy URL (e.g., `http://proxy:8080`) |
 
-### Intent Reference
+### Configuration Options
 
-| Intent | Value | Description |
-|--------|-------|-------------|
-| `GUILDS` | 1 << 0 | Server events |
-| `GUILD_MEMBERS` | 1 << 1 | Member join/leave events |
-| `GUILD_MESSAGES` | 1 << 9 | Server message events |
-| `DIRECT_MESSAGES` | 1 << 12 | DM events |
-| `MESSAGE_CONTENT` | 1 << 15 | Message content access |
+| Option | Type | Description |
+|--------|------|-------------|
+| `channels.discord.enabled` | boolean | Enable Discord channel |
+| `channels.discord.token` | string | Discord bot token |
+| `channels.discord.groupPolicy` | string | Group message policy (`open` or `restricted`) |
+| `channels.discord.dm.policy` | string | DM policy (`pairing` for auto-pairing) |
+| `channels.discord.dm.allowFrom` | array | Allowed DM users (`*` for all) |
 
 ## Architecture
 
