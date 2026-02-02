@@ -201,12 +201,16 @@ const discordPlugin = {
       const { account, abortSignal, log, cfg, setStatus, getStatus } = ctx;
       const accountId = account.accountId ?? 'default';
 
-      log?.info(`[${PLUGIN_ID}:${accountId}] Starting gateway`);
+      log?.info(`[${PLUGIN_ID}:${accountId}] === PLUGIN STARTING ===`);
+      log?.info(`[${PLUGIN_ID}:${accountId}] Token present: ${Boolean(account.token)}`);
 
       const runtime = getRuntime(accountId);
       runtime.account = account;
+      log?.info(`[${PLUGIN_ID}:${accountId}] Runtime state initialized`);
 
       const proxyUrl = getProxyUrl(cfg);
+      log?.info(`[${PLUGIN_ID}:${accountId}] Proxy URL: ${proxyUrl || 'none'}`);
+      log?.info(`[${PLUGIN_ID}:${accountId}] Creating gateway with intents: GUILDS, GUILD_MESSAGES, DIRECT_MESSAGES, MESSAGE_CONTENT`);
       const pluginConfig: DiscordPluginConfig = {
         ...DEFAULT_CONFIG,
         token: account.token!,
@@ -222,9 +226,11 @@ const discordPlugin = {
       };
 
       runtime.gateway = createGateway(pluginConfig);
+      log?.info(`[${PLUGIN_ID}:${accountId}] Gateway object created, attaching event handlers...`);
 
       // Set up event handlers
       runtime.gateway.on('ready', (data: { user: { username: string; discriminator: string } }) => {
+        log?.info(`[${PLUGIN_ID}:${accountId}] === GATEWAY READY === Connected as ${data.user.username}#${data.user.discriminator}`);
         runtime.connected = true;
         log?.info(`[${PLUGIN_ID}:${accountId}] Connected as ${data.user.username}#${data.user.discriminator}`);
         setStatus({
@@ -236,7 +242,13 @@ const discordPlugin = {
       });
 
       runtime.gateway.on('message', async (message: DiscordMessage) => {
-        log?.info(`[${PLUGIN_ID}:${accountId}] Received message from ${message.author.username}: ${message.content?.substring(0, 50)}...`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] === MESSAGE RECEIVED ===`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] Message ID: ${message.id}`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] Author: ${message.author.username}#${message.author.discriminator} (bot: ${message.author.bot})`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] Content: "${message.content?.substring(0, 100)}..."`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] Channel ID: ${message.channel_id}`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] Guild ID: ${message.guild_id || 'DM'}`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] Timestamp: ${message.timestamp}`);
 
         // Record activity
         try {
@@ -252,14 +264,17 @@ const discordPlugin = {
 
         // Check if message should be ignored (bot messages, etc.)
         if (message.author.bot) {
+          log?.info(`[${PLUGIN_ID}:${accountId}] Ignoring bot message`);
           return;
         }
 
         const isDm = !message.guild_id;
         const peerId = isDm ? `discord:${message.author.id}` : `discord:channel:${message.channel_id}`;
+        log?.info(`[${PLUGIN_ID}:${accountId}] Message type: ${isDm ? 'DM' : 'Guild Channel'}, peerId: ${peerId}`);
 
         try {
           const runtime = getDiscordPluginRuntime();
+          log?.info(`[${PLUGIN_ID}:${accountId}] Got plugin runtime, resolving agent route...`);
 
           // Resolve agent route
           const route = runtime.channel.routing.resolveAgentRoute({
@@ -271,6 +286,7 @@ const discordPlugin = {
               id: peerId,
             },
           });
+          log?.info(`[${PLUGIN_ID}:${accountId}] Agent route resolved: agentId=${route.agentId}, sessionKey=${route.sessionKey}`);
 
           const envelopeOptions = runtime.channel.reply.resolveEnvelopeFormatOptions(cfg);
 
@@ -318,6 +334,7 @@ const discordPlugin = {
 
           // Get messages config
           const messagesConfig = runtime.channel.reply.resolveEffectiveMessagesConfig(cfg, route.agentId);
+          log?.info(`[${PLUGIN_ID}:${accountId}] Messages config: responsePrefix="${messagesConfig.responsePrefix}"`);
 
           // Track if we got a response
           let hasResponse = false;
@@ -327,11 +344,13 @@ const discordPlugin = {
           const timeoutPromise = new Promise<never>((_, reject) => {
             timeoutId = setTimeout(() => {
               if (!hasResponse) {
+                log?.info(`[${PLUGIN_ID}:${accountId}] Response timeout reached`);
                 reject(new Error('Response timeout'));
               }
             }, responseTimeout);
           });
 
+          log?.info(`[${PLUGIN_ID}:${accountId}] Dispatching message to agent ${route.agentId}...`);
           const dispatchPromise = runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
             ctx: ctxPayload,
             cfg,
@@ -345,23 +364,28 @@ const discordPlugin = {
                 }
 
                 log?.info(`[${PLUGIN_ID}:${accountId}] deliver called`);
+                log?.info(`[${PLUGIN_ID}:${accountId}] Reply text: "${payload.text?.substring(0, 100)}..."`);
 
                 let replyText = payload.text ?? '';
 
                 try {
-                  const rt = getDiscordPluginRuntime();
+                  // Use the plugin's runtime API (not clawdbot runtime)
+                  const rt = getRuntime(accountId);
+                  if (!rt.api) {
+                    const proxyUrl = getProxyUrl(cfg);
+                    rt.api = createApi(account.token!, proxyUrl);
+                    log?.info(`[${PLUGIN_ID}:${accountId}] Created new API instance`);
+                  }
 
                   // Send reply via API
                   if (replyText.trim()) {
-                    await rt.api.messages.create({
-                      channelId: message.channel_id,
-                      content: replyText,
-                      messageReference: { messageId: message.id },
-                    });
+                    await rt.api.createMessage(message.channel_id, replyText, { message_reference: { message_id: message.id } });
                     log?.info(`[${PLUGIN_ID}:${accountId}] Sent reply`);
                   }
 
-                  rt.channel.activity.record({
+                  // Record activity via clawdbot runtime
+                  const clawdbotRuntime = getDiscordPluginRuntime();
+                  clawdbotRuntime.channel.activity.record({
                     channel: PLUGIN_ID,
                     accountId,
                     direction: 'outbound',
@@ -385,6 +409,7 @@ const discordPlugin = {
           // Wait for dispatch or timeout
           try {
             await Promise.race([dispatchPromise, timeoutPromise]);
+            log?.info(`[${PLUGIN_ID}:${accountId}] Message dispatch completed successfully`);
           } catch (err) {
             if (timeoutId) {
               clearTimeout(timeoutId);
@@ -418,7 +443,9 @@ const discordPlugin = {
       });
 
       // Connect
+      log?.info(`[${PLUGIN_ID}:${accountId}] Connecting to Discord gateway...`);
       await runtime.gateway.connect();
+      log?.info(`[${PLUGIN_ID}:${accountId}] Gateway connection initiated, waiting for ready event...`);
 
       // Wait for abort signal
       return new Promise<void>((resolve) => {
@@ -456,8 +483,12 @@ export default {
   name: 'Discord Proxy',
   description: 'Discord channel with proxy support',
   register(api: any): void {
+    console.log(`[${PLUGIN_ID}] Plugin register() called`);
+    console.log(`[${PLUGIN_ID}] Registering channel plugin with id: ${PLUGIN_ID}`);
     // Set up the runtime for use in gateway
     setDiscordPluginRuntime(api.runtime);
+    console.log(`[${PLUGIN_ID}] Plugin runtime set`);
     api.registerChannel({ plugin: discordPlugin });
+    console.log(`[${PLUGIN_ID}] Channel plugin registered successfully`);
   },
 };
