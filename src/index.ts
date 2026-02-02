@@ -9,9 +9,9 @@ export { DiscordChannelPlugin as plugin } from './channel';
 export * from './types';
 export * from './config';
 
-// OpenClaw plugin entry points
-export async function register(api: unknown): Promise<void> {
-  const { DiscordChannelPlugin } = await import('./channel');
+// OpenClaw plugin entry - default export for plugin loading
+export default function register(api: unknown): void {
+  const { DiscordChannelPlugin } = require('./channel');
   const plugin = new DiscordChannelPlugin();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (api as any).registerChannel({ plugin });
