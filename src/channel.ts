@@ -1,5 +1,8 @@
 /**
  * Channel Plugin implementation
+ *
+ * Note: This class is kept for compatibility but the actual
+ * plugin functionality is implemented in index.ts
  */
 
 import { DiscordGateway, createGateway } from './gateway';
@@ -18,7 +21,7 @@ export interface ChannelPluginOptions {
 
 export class DiscordChannelPlugin implements ChannelPlugin {
   id = 'clawdbot-discord-proxy';
-  name = 'clawdbot-discord-proxy';
+  name = 'Discord Proxy';
   version = '1.0.0';
 
   private config: DiscordPluginConfig = DEFAULT_CONFIG;

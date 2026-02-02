@@ -1,8 +1,8 @@
 {
   "id": "clawdbot-discord-proxy",
-  "name": "clawdbot-discord-proxy",
+  "name": "Discord Proxy",
   "version": "1.0.0",
-  "description": "Discord plugin with proxy support for Clawdbot",
+  "description": "Discord channel with proxy support for Clawdbot",
   "author": "Yoimiya",
   "license": "MIT",
   "type": "channel",
@@ -13,11 +13,6 @@
     "openclaw": ">=1.0.0"
   },
   "keywords": ["discord", "channel", "proxy"],
-  "uiHints": {
-    "title": "Discord Proxy",
-    "description": "Discord channel plugin with proxy support",
-    "channelLabel": "Discord Proxy Bot"
-  },
   "repository": "",
   "configSchema": {
     "type": "object",
@@ -31,21 +26,14 @@
         "type": "string",
         "description": "Proxy URL (http, https, socks)"
       },
-      "intents": {
-        "type": "array",
-        "items": { "type": "string" },
-        "description": "Gateway intents",
-        "default": ["GUILD_MESSAGES", "DIRECT_MESSAGES", "MESSAGE_CONTENT"]
-      },
-      "autoReconnect": {
+      "enabled": {
         "type": "boolean",
-        "description": "Auto reconnect on disconnect",
+        "description": "Enable this account",
         "default": true
       },
-      "heartbeatInterval": {
-        "type": "number",
-        "description": "Heartbeat interval in milliseconds",
-        "default": 45000
+      "name": {
+        "type": "string",
+        "description": "Account display name"
       }
     },
     "required": []
