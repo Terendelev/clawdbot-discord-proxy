@@ -1,4 +1,4 @@
-# Clawdbot Discord Plugin
+# Clawdbot Discord Proxy Plugin
 
 Discord channel plugin with proxy support for Clawdbot.
 
@@ -67,7 +67,7 @@ Add to your `openclaw.json`:
 ## Architecture
 
 ```
-clawdbot-discord/
+clawdbot-discord-proxy/
 ├── src/
 │   ├── index.ts           # Plugin entry point
 │   ├── channel.ts         # Channel Plugin implementation
