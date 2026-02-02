@@ -65,11 +65,26 @@ function getProxyUrl(cfg: Record<string, unknown>): string | undefined {
   return channelCfg?.proxyConfig?.httpsUrl ?? channelCfg?.proxyUrl;
 }
 
+// Plugin runtime for accessing clawdbot internals
+let pluginRuntime: any = null;
+
+export function setDiscordPluginRuntime(runtime: any): void {
+  pluginRuntime = runtime;
+}
+
+export function getDiscordPluginRuntime(): any {
+  if (!pluginRuntime) {
+    throw new Error('Discord plugin runtime not initialized');
+  }
+  return pluginRuntime;
+}
+
 // Runtime state for each account
 const runtimeState = new Map<string, {
   gateway: DiscordGateway | null;
   api: DiscordApi | null;
   connected: boolean;
+  account?: DiscordAccount;
 }>();
 
 // Get or create runtime for account
@@ -102,6 +117,7 @@ const discordPlugin = {
     threads: true,
     media: true,
   },
+  reload: { configPrefixes: ['channels.clawdbot-discord-proxy'] },
   config: {
     listAccountIds,
     resolveAccount,
@@ -124,9 +140,11 @@ const discordPlugin = {
       replyToId?: string;
       cfg: Record<string, unknown>;
     }) => {
-      const account = resolveAccount(cfg, accountId);
-      const runtime = getRuntime(accountId ?? 'default');
+      const accountIdStr = accountId ?? 'default';
+      const account = resolveAccount(cfg, accountIdStr);
+      const runtime = getRuntime(accountIdStr);
 
+      // Ensure API is created
       if (!runtime.api) {
         const proxyUrl = getProxyUrl(cfg);
         runtime.api = createApi(account.token!, proxyUrl);
@@ -139,14 +157,56 @@ const discordPlugin = {
         return { ok: false, error: (error as Error).message };
       }
     },
+    sendMedia: async ({ to, text, mediaUrl, accountId, cfg }: {
+      to: string;
+      text?: string;
+      mediaUrl: string;
+      accountId?: string;
+      cfg: Record<string, unknown>;
+    }) => {
+      const accountIdStr = accountId ?? 'default';
+      const account = resolveAccount(cfg, accountIdStr);
+      const runtime = getRuntime(accountIdStr);
+
+      // Ensure API is created
+      if (!runtime.api) {
+        const proxyUrl = getProxyUrl(cfg);
+        runtime.api = createApi(account.token!, proxyUrl);
+      }
+
+      try {
+        // Discord requires uploading media via attachments
+        // For now, just send the text with media URL
+        const messageText = text ? `${text}\n${mediaUrl}` : mediaUrl;
+        await runtime.api.createMessage(to, messageText);
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: (error as Error).message };
+      }
+    },
   },
   gateway: {
-    start: async ({ accountId, cfg }: { accountId?: string; cfg: Record<string, unknown> }) => {
-      const account = resolveAccount(cfg, accountId);
-      const runtime = getRuntime(accountId ?? 'default');
-      const proxyUrl = getProxyUrl(cfg);
+    startAccount: async (ctx: {
+      account: DiscordAccount;
+      abortSignal: AbortSignal;
+      log?: {
+        info: (msg: string) => void;
+        error: (msg: string) => void;
+        debug?: (msg: string) => void;
+      };
+      cfg: Record<string, unknown>;
+      setStatus: (status: any) => void;
+      getStatus: () => any;
+    }) => {
+      const { account, abortSignal, log, cfg, setStatus, getStatus } = ctx;
+      const accountId = account.accountId ?? 'default';
 
-      // Create gateway
+      log?.info(`[${PLUGIN_ID}:${accountId}] Starting gateway`);
+
+      const runtime = getRuntime(accountId);
+      runtime.account = account;
+
+      const proxyUrl = getProxyUrl(cfg);
       const pluginConfig: DiscordPluginConfig = {
         ...DEFAULT_CONFIG,
         token: account.token!,
@@ -164,60 +224,229 @@ const discordPlugin = {
       runtime.gateway = createGateway(pluginConfig);
 
       // Set up event handlers
-      runtime.gateway.on('ready', () => {
+      runtime.gateway.on('ready', (data: { user: { username: string; discriminator: string } }) => {
         runtime.connected = true;
-        console.log(`[${PLUGIN_ID}] Connected to Discord`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] Connected as ${data.user.username}#${data.user.discriminator}`);
+        setStatus({
+          ...getStatus(),
+          running: true,
+          connected: true,
+          lastConnectedAt: Date.now(),
+        });
       });
 
-      runtime.gateway.on('message', (message: DiscordMessage) => {
-        console.log(`[${PLUGIN_ID}] Received message from ${message.author.username}: ${message.content?.substring(0, 50)}...`);
+      runtime.gateway.on('message', async (message: DiscordMessage) => {
+        log?.info(`[${PLUGIN_ID}:${accountId}] Received message from ${message.author.username}: ${message.content?.substring(0, 50)}...`);
+
+        // Record activity
+        try {
+          const runtime = getDiscordPluginRuntime();
+          runtime.channel.activity.record({
+            channel: PLUGIN_ID,
+            accountId,
+            direction: 'inbound',
+          });
+        } catch (e) {
+          // Ignore if runtime not available
+        }
+
+        // Check if message should be ignored (bot messages, etc.)
+        if (message.author.bot) {
+          return;
+        }
+
+        const isDm = !message.guild_id;
+        const peerId = isDm ? `discord:${message.author.id}` : `discord:channel:${message.channel_id}`;
+
+        try {
+          const runtime = getDiscordPluginRuntime();
+
+          // Resolve agent route
+          const route = runtime.channel.routing.resolveAgentRoute({
+            cfg,
+            channel: PLUGIN_ID,
+            accountId,
+            peer: {
+              kind: isDm ? 'dm' : 'channel',
+              id: peerId,
+            },
+          });
+
+          const envelopeOptions = runtime.channel.reply.resolveEnvelopeFormatOptions(cfg);
+
+          // Format the message body
+          const messageBody = message.content || '';
+
+          // Create inbound envelope
+          const body = runtime.channel.reply.formatInboundEnvelope({
+            channel: 'Discord',
+            from: `${message.author.username}#${message.author.discriminator}`,
+            timestamp: new Date(message.timestamp).getTime(),
+            body: messageBody,
+            chatType: isDm ? 'direct' : 'channel',
+            sender: {
+              id: message.author.id,
+              name: `${message.author.username}#${message.author.discriminator}`,
+            },
+            envelope: envelopeOptions,
+          });
+
+          const fromAddress = isDm ? `discord:${message.author.id}` : `discord:channel:${message.channel_id}`;
+          const toAddress = fromAddress;
+
+          // Create context payload
+          const ctxPayload = runtime.channel.reply.finalizeInboundContext({
+            Body: body,
+            RawBody: message.content || '',
+            CommandBody: message.content || '',
+            From: fromAddress,
+            To: toAddress,
+            SessionKey: route.sessionKey,
+            AccountId: route.accountId,
+            ChatType: isDm ? 'direct' : 'channel',
+            SenderId: message.author.id,
+            SenderName: `${message.author.username}#${message.author.discriminator}`,
+            Provider: PLUGIN_ID,
+            Surface: PLUGIN_ID,
+            MessageSid: message.id,
+            Timestamp: new Date(message.timestamp).getTime(),
+            OriginatingChannel: PLUGIN_ID,
+            OriginatingTo: toAddress,
+            DiscordChannelId: message.channel_id,
+            DiscordGuildId: message.guild_id,
+          });
+
+          // Get messages config
+          const messagesConfig = runtime.channel.reply.resolveEffectiveMessagesConfig(cfg, route.agentId);
+
+          // Track if we got a response
+          let hasResponse = false;
+          const responseTimeout = 60000; // 60 seconds timeout
+          let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              if (!hasResponse) {
+                reject(new Error('Response timeout'));
+              }
+            }, responseTimeout);
+          });
+
+          const dispatchPromise = runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+            ctx: ctxPayload,
+            cfg,
+            dispatcherOptions: {
+              responsePrefix: messagesConfig.responsePrefix,
+              deliver: async (payload: { text?: string; mediaUrls?: string[]; mediaUrl?: string }) => {
+                hasResponse = true;
+                if (timeoutId) {
+                  clearTimeout(timeoutId);
+                  timeoutId = null;
+                }
+
+                log?.info(`[${PLUGIN_ID}:${accountId}] deliver called`);
+
+                let replyText = payload.text ?? '';
+
+                try {
+                  const rt = getDiscordPluginRuntime();
+
+                  // Send reply via API
+                  if (replyText.trim()) {
+                    await rt.api.messages.create({
+                      channelId: message.channel_id,
+                      content: replyText,
+                      messageReference: { messageId: message.id },
+                    });
+                    log?.info(`[${PLUGIN_ID}:${accountId}] Sent reply`);
+                  }
+
+                  rt.channel.activity.record({
+                    channel: PLUGIN_ID,
+                    accountId,
+                    direction: 'outbound',
+                  });
+                } catch (err) {
+                  log?.error(`[${PLUGIN_ID}:${accountId}] Failed to send reply: ${err}`);
+                }
+              },
+              onError: async (err: unknown) => {
+                log?.error(`[${PLUGIN_ID}:${accountId}] Dispatch error: ${err}`);
+                hasResponse = true;
+                if (timeoutId) {
+                  clearTimeout(timeoutId);
+                  timeoutId = null;
+                }
+              },
+            },
+            replyOptions: {},
+          });
+
+          // Wait for dispatch or timeout
+          try {
+            await Promise.race([dispatchPromise, timeoutPromise]);
+          } catch (err) {
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+            }
+            if (!hasResponse) {
+              log?.error(`[${PLUGIN_ID}:${accountId}] No response within timeout`);
+            }
+          }
+        } catch (err) {
+          log?.error(`[${PLUGIN_ID}:${accountId}] Message processing failed: ${err}`);
+        }
       });
 
       runtime.gateway.on('error', (error: Error) => {
-        console.error(`[${PLUGIN_ID}] Gateway error:`, error.message);
+        log?.error(`[${PLUGIN_ID}:${accountId}] Gateway error: ${error.message}`);
         runtime.connected = false;
+        setStatus({
+          ...getStatus(),
+          lastError: error.message,
+        });
       });
 
       runtime.gateway.on('closed', () => {
         runtime.connected = false;
-        console.log(`[${PLUGIN_ID}] Gateway closed`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] Gateway closed`);
+        setStatus({
+          ...getStatus(),
+          running: false,
+          connected: false,
+        });
       });
 
       // Connect
       await runtime.gateway.connect();
-      return { ok: true };
-    },
-    stop: async ({ accountId }: { accountId?: string }) => {
-      const runtime = getRuntime(accountId ?? 'default');
-      if (runtime.gateway) {
-        await runtime.gateway.disconnect();
-        runtime.gateway = null;
-        runtime.connected = false;
-      }
-      return { ok: true };
-    },
-    isRunning: ({ accountId }: { accountId?: string }) => {
-      const runtime = getRuntime(accountId ?? 'default');
-      return runtime.connected;
+
+      // Wait for abort signal
+      return new Promise<void>((resolve) => {
+        abortSignal.addEventListener('abort', () => {
+          runtime.gateway?.disconnect();
+          resolve();
+        });
+      });
     },
   },
   status: {
-    describeAccount: (account: DiscordAccount, cfg: Record<string, unknown>) => {
-      const runtime = getRuntime(account.accountId ?? 'default');
-      const proxyUrl = getProxyUrl(cfg);
-
-      return {
-        accountId: account.accountId ?? 'default',
-        name: account.name,
-        enabled: account.enabled ?? true,
-        configured: isConfigured(account),
-        proxyConfigured: Boolean(proxyUrl),
-        running: runtime.connected,
-        connected: runtime.connected,
-        lastConnectedAt: null,
-        lastError: null,
-      };
+    defaultRuntime: {
+      accountId: 'default',
+      running: false,
+      connected: false,
+      lastConnectedAt: null,
+      lastError: null,
     },
+    buildAccountSnapshot: ({ account, runtime }: { account: DiscordAccount; runtime: any }) => ({
+      accountId: account?.accountId ?? 'default',
+      name: account?.name,
+      enabled: account?.enabled ?? true,
+      configured: isConfigured(account),
+      running: runtime?.running ?? false,
+      connected: runtime?.connected ?? false,
+      lastConnectedAt: runtime?.lastConnectedAt ?? null,
+      lastError: runtime?.lastError ?? null,
+    }),
   },
 };
 
@@ -226,8 +455,9 @@ export default {
   id: PLUGIN_ID,
   name: 'Discord Proxy',
   description: 'Discord channel with proxy support',
-  register(api: unknown): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (api as any).registerChannel({ plugin: discordPlugin });
+  register(api: any): void {
+    // Set up the runtime for use in gateway
+    setDiscordPluginRuntime(api.runtime);
+    api.registerChannel({ plugin: discordPlugin });
   },
 };
