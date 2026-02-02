@@ -28,7 +28,7 @@ Add to your `openclaw.json`:
 {
   "plugins": {
     "entries": {
-      "clawdbot-discord": {
+      "clawdbot-discord-proxy": {
         "enabled": true,
         "config": {
           "token": "${DISCORD_TOKEN}",

@@ -1,12 +1,12 @@
 {
-  "id": "clawdbot-discord",
+  "id": "clawdbot-discord-proxy",
   "name": "clawdbot-discord",
   "version": "1.0.0",
   "description": "Discord plugin with proxy support for Clawdbot",
   "author": "Yoimiya",
   "license": "MIT",
   "type": "channel",
-  "channels": ["clawdbot-discord"],
+  "channels": ["clawdbot-discord-proxy"],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "engines": {
