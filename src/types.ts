@@ -211,6 +211,7 @@ export interface DiscordPluginConfig {
 
 /** Channel plugin interface */
 export interface ChannelPlugin {
+  id?: string;
   name: string;
   version: string;
   initialize: (options?: { config?: Record<string, unknown> }) => Promise<void>;

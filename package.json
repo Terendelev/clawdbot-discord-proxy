@@ -1,9 +1,14 @@
 {
-  "name": "clawdbot-discord",
+  "name": "clawdbot-discord-proxy",
   "version": "1.0.0",
   "description": "Clawdbot Discord plugin with proxy support",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "clawdbot": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
   "openclaw": {
     "extensions": [
       "./dist/index.js"

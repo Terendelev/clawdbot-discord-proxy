@@ -17,6 +17,7 @@ export interface ChannelPluginOptions {
 }
 
 export class DiscordChannelPlugin implements ChannelPlugin {
+  id = 'clawdbot-discord-proxy';
   name = 'clawdbot-discord-proxy';
   version = '1.0.0';
 
