@@ -22,25 +22,25 @@ export interface RequestOptions {
   query?: Record<string, string>;
 }
 
-// Dynamic import for proxy-agent to avoid type issues
-function createProxyAgent(proxyUrl: string): Agent | undefined {
+// Get proxy agent based on URL type
+function getProxyAgent(proxyUrl?: string): Agent | undefined {
+  if (!proxyUrl) {
+    const envProxy = process.env.DISCORD_PROXY;
+    if (envProxy) {
+      proxyUrl = envProxy;
+    } else {
+      return undefined;
+    }
+  }
+
   try {
-    const ProxyAgent = require('proxy-agent').ProxyAgent;
-    return new ProxyAgent(proxyUrl) as unknown as Agent;
+    // Use https-proxy-agent for HTTP/HTTPS proxies
+    const mod = require('https-proxy-agent');
+    const HttpsProxyAgent = mod.HttpsProxyAgent;
+    return new HttpsProxyAgent(proxyUrl) as unknown as Agent;
   } catch {
     return undefined;
   }
-}
-
-function getProxyAgent(proxyUrl?: string): Agent | undefined {
-  if (proxyUrl) {
-    return createProxyAgent(proxyUrl);
-  }
-  const envProxy = process.env.DISCORD_PROXY;
-  if (envProxy) {
-    return createProxyAgent(envProxy);
-  }
-  return undefined;
 }
 
 /**
@@ -61,7 +61,7 @@ export class DiscordApi {
    * Make HTTP request
    */
   private async request<T>(options: RequestOptions): Promise<T> {
-    const url = new URL(options.path, this.baseUrl);
+    const url = new URL(`${this.baseUrl}${options.path}`);
 
     if (options.query) {
       for (const [key, value] of Object.entries(options.query)) {

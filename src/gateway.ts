@@ -14,15 +14,22 @@ import {
   DiscordChannel,
 } from './types';
 
-// Proxy agent constructor type
-type ProxyAgentConstructor = new (url: string) => unknown;
+// Proxy agent for WebSocket connections
+export function getProxyAgent(proxyUrl?: string): unknown {
+  if (!proxyUrl) {
+    const envProxy = process.env.DISCORD_PROXY;
+    if (envProxy) {
+      proxyUrl = envProxy;
+    } else {
+      return undefined;
+    }
+  }
 
-// Dynamic import for proxy-agent to avoid type issues
-function createProxyAgent(proxyUrl: string): unknown {
   try {
-    const ProxyAgentModule = require('proxy-agent');
-    const ProxyAgent = ProxyAgentModule.ProxyAgent as ProxyAgentConstructor;
-    return new ProxyAgent(proxyUrl);
+    // Use https-proxy-agent for WebSocket proxy support
+    const mod = require('https-proxy-agent');
+    const HttpsProxyAgent = mod.HttpsProxyAgent;
+    return new HttpsProxyAgent(proxyUrl);
   } catch {
     return undefined;
   }
@@ -45,20 +52,6 @@ export interface GatewayEventMap {
   channelDelete: DiscordChannel;
   error: Error;
   closed: { code: number; reason: string };
-}
-
-/**
- * Get proxy agent from configuration
- */
-export function getProxyAgent(proxyUrl?: string): unknown {
-  if (proxyUrl) {
-    return createProxyAgent(proxyUrl);
-  }
-  const envProxy = process.env.DISCORD_PROXY;
-  if (envProxy) {
-    return createProxyAgent(envProxy);
-  }
-  return undefined;
 }
 
 /**
