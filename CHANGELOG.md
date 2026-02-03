@@ -24,8 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated plugin name in `openclaw.plugin.json`, `channel.ts`, and `README.md`
 
 ### Verified
-- Successfully connected to Discord via proxy `http://192.168.2.6:7890`
-- Retrieved DM history for user zenk (ID: 988274067054428171)
+- Successfully connected to Discord via proxy `http://proxy.example.com:7890`
+- Retrieved DM history for user testuser (ID: 123456789012345678)
 - Sent reply to user through Discord API using proxy
 
 ---
@@ -111,9 +111,9 @@ clawdbot-discord/
 - Plugin initialization with proxy configuration
 
 ### Live Test Results
-- **Bot**: Areelu Vorlesh#0899 (ID: 1466684875728883844)
-- **Proxy**: http://192.168.2.6:7890
-- **DM History**: Successfully retrieved 20 messages from user zenk
+- **Bot**: TestBot#1234 (ID: 123456789012345678)
+- **Proxy**: http://proxy.example.com:7890
+- **DM History**: Successfully retrieved messages from user
 - **Reply**: Successfully sent reply to user via proxy
 
 ---

@@ -1,6 +1,6 @@
 /**
  * Integration tests for Discord connection with proxy
- * Uses proxy: http://192.168.2.6:7890
+ * Uses proxy: http://proxy.example.com:7890
  */
 
 import { DiscordGateway } from '../gateway';
@@ -8,7 +8,7 @@ import { DiscordApi } from '../api';
 import { GatewayIntent } from '../types';
 
 describe('discord connection with proxy', () => {
-  const PROXY_URL = 'http://192.168.2.6:7890';
+  const PROXY_URL = 'http://proxy.example.com:7890';
   const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
   describe('DiscordGateway via proxy', () => {

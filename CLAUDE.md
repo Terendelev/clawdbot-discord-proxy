@@ -48,3 +48,17 @@ npm run lint         # Lint source files
 - Configuration format updates
 - Git commits and testing results
 - Notes for future development
+
+**SESSION_SUMMARY_2026-02-03b.md** - Records the 2026-02-03b session for file upload bug fix:
+- Missing sendFile method in ChannelPlugin interface
+- Implementation of sendFile in DiscordChannelPlugin
+- Bug report analysis (discord-file-send-bug-report-20260203.md)
+- Test results and usage examples
+
+**SESSION_SUMMARY_2026-02-03b.md (evening update)** - Records the 2026-02-03 evening session:
+- sendMedia path parameter support fix
+- TypeScript error fixes in unit tests
+- Target resolution for Discord DM targets
+- Added `messaging.normalizeTarget` and `messaging.targetResolver`
+- New test file: `src/tests/target-resolution.test.ts` (30 tests)
+- 98 unit tests passing

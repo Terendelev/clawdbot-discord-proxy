@@ -86,6 +86,23 @@ export function getDiscordPluginRuntime(): any {
   return pluginRuntime;
 }
 
+// Extract user ID from various target formats
+export function extractUserId(target: string): string | undefined {
+  if (target.startsWith('discord:')) {
+    const userId = target.slice('discord:'.length).trim();
+    return userId || undefined;
+  }
+  if (target.startsWith('user:')) {
+    const userId = target.slice('user:'.length).trim();
+    return userId || undefined;
+  }
+  // Bare numeric ID - assume it's a user ID for DM
+  if (/^\d{6,}$/.test(target)) {
+    return target.trim();
+  }
+  return undefined;
+}
+
 // Runtime state for each account
 const runtimeState = new Map<string, {
   gateway: DiscordGateway | null;
@@ -125,6 +142,56 @@ const discordPlugin = {
     media: true,
   },
   reload: { configPrefixes: ['channels.clawdbot-discord-proxy'] },
+  messaging: {
+    normalizeTarget: (raw: string): string | undefined => {
+      const trimmed = raw.trim();
+      if (!trimmed) return undefined;
+
+      // Discord mention format: <@123456789> or <@!123456789>
+      const mentionMatch = trimmed.match(/^<@!?(\d+)>$/);
+      if (mentionMatch) {
+        return `user:${mentionMatch[1]}`;
+      }
+
+      // user:123456789 format
+      if (trimmed.startsWith('user:')) {
+        return trimmed.toLowerCase();
+      }
+
+      // channel:123456789 format
+      if (trimmed.startsWith('channel:')) {
+        return trimmed.toLowerCase();
+      }
+
+      // discord:123456789 format -> user:123456789
+      if (trimmed.startsWith('discord:')) {
+        const userId = trimmed.slice('discord:'.length).trim();
+        return userId ? `user:${userId}` : undefined;
+      }
+
+      // Bare numeric ID - default to user (DM)
+      if (/^\d{6,}$/.test(trimmed)) {
+        return `user:${trimmed}`;
+      }
+
+      return undefined;
+    },
+    targetResolver: {
+      // Check if the target looks like a valid Discord ID
+      looksLikeId: (raw: string, _normalized: string): boolean => {
+        const trimmed = raw.trim();
+        if (!trimmed) return false;
+        // Discord mention format: <@123456789> or <@!123456789>
+        if (/^<@!?\d+>$/.test(trimmed)) return true;
+        // Prefixed formats: user:123456789, channel:123456789, discord:123456789
+        if (/^(user|channel|discord):/i.test(trimmed)) return true;
+        // Bare numeric IDs (6+ digits)
+        if (/^\d{6,}$/.test(trimmed)) return true;
+        return false;
+      },
+      hint: 'Use user:<id> or discord:<id> for DMs, channel:<id> for channel messages, or a raw numeric ID.',
+    },
+  },
   config: {
     listAccountIds,
     resolveAccount,
@@ -157,17 +224,27 @@ const discordPlugin = {
         runtime.api = createApi(account.token!, proxyUrl);
       }
 
+      // Resolve channel ID (handle discord:userId and user:userId formats for DMs)
+      let channelId = to;
+      const userId = extractUserId(to);
+      if (userId) {
+        // Create DM channel for user
+        const dmChannel = await runtime.api!.createDm(userId);
+        channelId = dmChannel.id;
+      }
+
       try {
-        await runtime.api.createMessage(to, text, replyToId ? { message_reference: { message_id: replyToId } } : undefined);
+        await runtime.api!.createMessage(channelId, text, replyToId ? { message_reference: { message_id: replyToId } } : undefined);
         return { ok: true };
       } catch (error) {
         return { ok: false, error: (error as Error).message };
       }
     },
-    sendMedia: async ({ to, text, mediaUrl, replyToId, accountId, cfg }: {
+    sendMedia: async ({ to, text, mediaUrl, path, replyToId, accountId, cfg }: {
       to: string;
       text?: string;
-      mediaUrl: string;
+      mediaUrl?: string;
+      path?: string;
       replyToId?: string;
       accountId?: string;
       cfg: Record<string, unknown>;
@@ -182,9 +259,24 @@ const discordPlugin = {
         runtime.api = createApi(account.token!, proxyUrl);
       }
 
+      // Use path or mediaUrl as the file source
+      const filePath = path || mediaUrl;
+      if (!filePath) {
+        return { ok: false, error: 'No file path provided' };
+      }
+
+      // Resolve channel ID (handle discord:userId and user:userId formats for DMs)
+      let channelId = to;
+      const userId = extractUserId(to);
+      if (userId) {
+        // Create DM channel for user
+        const dmChannel = await runtime.api!.createDm(userId);
+        channelId = dmChannel.id;
+      }
+
       try {
         // Upload file with optional text content and reply reference
-        await runtime.api.uploadFile(to, mediaUrl, {
+        await runtime.api!.uploadFile(channelId, filePath, {
           content: text,
           message_reference: replyToId ? { message_id: replyToId } : undefined,
         });
