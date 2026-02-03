@@ -164,10 +164,11 @@ const discordPlugin = {
         return { ok: false, error: (error as Error).message };
       }
     },
-    sendMedia: async ({ to, text, mediaUrl, accountId, cfg }: {
+    sendMedia: async ({ to, text, mediaUrl, replyToId, accountId, cfg }: {
       to: string;
       text?: string;
       mediaUrl: string;
+      replyToId?: string;
       accountId?: string;
       cfg: Record<string, unknown>;
     }) => {
@@ -182,10 +183,11 @@ const discordPlugin = {
       }
 
       try {
-        // Discord requires uploading media via attachments
-        // For now, just send the text with media URL
-        const messageText = text ? `${text}\n${mediaUrl}` : mediaUrl;
-        await runtime.api.createMessage(to, messageText);
+        // Upload file with optional text content and reply reference
+        await runtime.api.uploadFile(to, mediaUrl, {
+          content: text,
+          message_reference: replyToId ? { message_id: replyToId } : undefined,
+        });
         return { ok: true };
       } catch (error) {
         return { ok: false, error: (error as Error).message };

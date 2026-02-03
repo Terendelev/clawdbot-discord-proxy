@@ -31,6 +31,7 @@
   "author": "Yoimiya",
   "license": "MIT",
   "dependencies": {
+    "form-data": "^4.0.5",
     "https-proxy-agent": "^7.0.6",
     "proxy": "^2.2.0",
     "proxy-agent": "^6.4.0",
