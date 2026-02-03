@@ -10,10 +10,13 @@ import { DiscordGateway, createGateway } from '../../gateway';
 import { DiscordApi, createApi } from '../../api';
 import { GatewayIntent } from '../../types';
 
-// Test configuration from environment variables
-// These must be provided via environment variables for security
+// Test configuration from environment variables or config file
+// For CLI: export DISCORD_TEST_TOKEN="..." DISCORD_PROXY_URL="..." DISCORD_WS_PROXY_URL="..."
 const TEST_TOKEN = process.env.DISCORD_TEST_TOKEN || '';
+// HTTP/HTTPS proxy for REST API
 const TEST_PROXY_URL = process.env.DISCORD_PROXY_URL || '';
+// SOCKS5 proxy for WebSocket Gateway (required for Discord)
+const TEST_WS_PROXY_URL = process.env.DISCORD_WS_PROXY_URL || '';
 const TEST_USER_ID = process.env.DISCORD_TEST_USER_ID || '';
 
 describe('Discord Gateway Integration', () => {
@@ -25,7 +28,7 @@ describe('Discord Gateway Integration', () => {
       const config = {
         enabled: true,
         token: TEST_TOKEN,
-        proxyUrl: TEST_PROXY_URL,
+        proxyUrl: TEST_WS_PROXY_URL,  // SOCKS5 for WebSocket
         intents: [
           GatewayIntent.GUILDS,
           GatewayIntent.GUILD_MESSAGES,
@@ -53,10 +56,20 @@ describe('Discord Gateway Integration', () => {
         // Connection closed expected
       });
 
-      await gateway.connect();
+      // Use Promise to wait for ready event
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Ready event not received within timeout'));
+        }, 20000);
 
-      // Wait for ready event (should be within 10 seconds)
-      await new Promise((resolve) => setTimeout(resolve, 10000));
+        gateway.on('ready', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+
+      // Give some time for additional events
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       // Clean disconnect
       await gateway.disconnect();
@@ -81,7 +94,7 @@ describe('Discord Gateway Integration', () => {
       const config = {
         enabled: true,
         token: TEST_TOKEN,
-        proxyUrl: TEST_PROXY_URL,
+        proxyUrl: TEST_WS_PROXY_URL,  // SOCKS5 for WebSocket
         intents: [
           GatewayIntent.GUILDS,
           GatewayIntent.GUILD_MESSAGES,
@@ -141,7 +154,7 @@ describe('Discord Gateway Integration', () => {
       const config = {
         enabled: true,
         token: TEST_TOKEN,
-        proxyUrl: TEST_PROXY_URL,
+        proxyUrl: TEST_WS_PROXY_URL,  // SOCKS5 for WebSocket
         intents: [
           GatewayIntent.GUILD_MESSAGES,
           GatewayIntent.DIRECT_MESSAGES,
@@ -176,7 +189,7 @@ describe('Discord Gateway Integration', () => {
       const config = {
         enabled: true,
         token: TEST_TOKEN,
-        proxyUrl: TEST_PROXY_URL,
+        proxyUrl: TEST_WS_PROXY_URL,  // SOCKS5 for WebSocket
         intents: [GatewayIntent.DIRECT_MESSAGES],
         autoReconnect: false,
         heartbeatInterval: 45000,

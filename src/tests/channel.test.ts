@@ -20,7 +20,8 @@ describe('channel', () => {
     });
 
     it('should have correct name and version', () => {
-      expect(plugin.name).toBe('clawdbot-discord-proxy');
+      expect(plugin.id).toBe('clawdbot-discord-proxy');
+      expect(plugin.name).toBe('Discord Proxy');
       expect(plugin.version).toBe('1.0.0');
     });
 

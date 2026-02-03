@@ -440,6 +440,38 @@ const discordPlugin = {
           running: false,
           connected: false,
         });
+        // Explicitly trigger reconnect (redundant protection)
+        if (runtime.gateway) {
+          runtime.gateway.scheduleReconnect();
+        }
+      });
+
+      // Monitor reconnect events
+      runtime.gateway.on('reconnecting', () => {
+        log?.info(`[${PLUGIN_ID}:${accountId}] Attempting to reconnect...`);
+        setStatus({
+          ...getStatus(),
+          connected: false,
+          lastError: null,
+        });
+      });
+
+      runtime.gateway.on('reconnected', () => {
+        log?.info(`[${PLUGIN_ID}:${accountId}] Reconnected successfully`);
+        runtime.connected = true;
+        setStatus({
+          ...getStatus(),
+          connected: true,
+          lastConnectedAt: Date.now(),
+        });
+      });
+
+      runtime.gateway.on('reconnectFailed', ({ error }: { error: Error }) => {
+        log?.error(`[${PLUGIN_ID}:${accountId}] Reconnect failed: ${error.message}`);
+        setStatus({
+          ...getStatus(),
+          lastError: error.message,
+        });
       });
 
       // Connect

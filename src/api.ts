@@ -34,10 +34,9 @@ function getProxyAgent(proxyUrl?: string): Agent | undefined {
   }
 
   try {
-    // Use https-proxy-agent for HTTP/HTTPS proxies
-    const mod = require('https-proxy-agent');
-    const HttpsProxyAgent = mod.HttpsProxyAgent;
-    return new HttpsProxyAgent(proxyUrl) as unknown as Agent;
+    // Use proxy-agent which supports HTTP, HTTPS, SOCKS4, SOCKS5
+    const { ProxyAgent } = require('proxy-agent');
+    return new ProxyAgent(proxyUrl) as unknown as Agent;
   } catch {
     return undefined;
   }

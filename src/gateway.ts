@@ -26,11 +26,16 @@ export function getProxyAgent(proxyUrl?: string): unknown {
   }
 
   try {
-    // Use https-proxy-agent for WebSocket proxy support
-    const mod = require('https-proxy-agent');
-    const HttpsProxyAgent = mod.HttpsProxyAgent;
-    return new HttpsProxyAgent(proxyUrl);
-  } catch {
+    // Use socks-proxy-agent for SOCKS5 proxy (better WebSocket support)
+    if (proxyUrl.startsWith('socks')) {
+      const { SocksProxyAgent } = require('socks-proxy-agent');
+      return new SocksProxyAgent(proxyUrl);
+    }
+    // Use proxy-agent for HTTP/HTTPS proxies
+    const { ProxyAgent } = require('proxy-agent');
+    return new ProxyAgent(proxyUrl);
+  } catch (error) {
+    console.error('Failed to create proxy agent:', error);
     return undefined;
   }
 }
@@ -52,6 +57,9 @@ export interface GatewayEventMap {
   channelDelete: DiscordChannel;
   error: Error;
   closed: { code: number; reason: string };
+  reconnecting: void;
+  reconnected: void;
+  reconnectFailed: { error: Error };
 }
 
 /**
@@ -123,12 +131,12 @@ export class DiscordGateway {
         this.handleClose(code, reason.toString());
       });
 
-      // Timeout for connection
+      // Timeout for connection (longer for proxy)
       setTimeout(() => {
         if (!this.connected) {
           reject(new Error('Gateway connection timeout'));
         }
-      }, 10000);
+      }, 15000);
     });
   }
 
@@ -281,16 +289,30 @@ export class DiscordGateway {
   }
 
   /**
-   * Schedule reconnection attempt
+   * Schedule reconnection attempt (public for external triggering)
    */
-  private scheduleReconnect(): void {
+  scheduleReconnect(): void {
     if (this.reconnectTimer) return;
 
     const delay = Math.min(1000 * Math.pow(2, Math.floor(Math.random() * 5)), 60000);
+    console.log(`[DiscordGateway] Scheduling reconnect in ${delay}ms`);
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.connect().catch(() => {});
+      console.log('[DiscordGateway] Attempting to reconnect...');
+      this.emit('reconnecting');
+
+      this.connect()
+        .then(() => {
+          console.log('[DiscordGateway] Reconnected successfully');
+          this.emit('reconnected');
+        })
+        .catch((error) => {
+          console.error(`[DiscordGateway] Reconnect failed: ${error.message}`);
+          this.emit('reconnectFailed', { error });
+          // Schedule another reconnect attempt
+          this.scheduleReconnect();
+        });
     }, delay);
   }
 
@@ -363,13 +385,13 @@ export class DiscordGateway {
    */
   private emit<K extends keyof GatewayEventMap>(
     event: K,
-    data: GatewayEventMap[K]
+    data?: GatewayEventMap[K]
   ): void {
     const handlers = this.eventHandlers.get(event);
     if (handlers) {
       for (const handler of handlers) {
         try {
-          handler(data);
+          handler(data as GatewayEventMap[K]);
         } catch (error) {
           console.error(`Error in event handler for ${event}:`, error);
         }
