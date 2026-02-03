@@ -65,6 +65,13 @@ function getProxyUrl(cfg: Record<string, unknown>): string | undefined {
   return channelCfg?.proxyConfig?.httpsUrl ?? channelCfg?.proxyUrl;
 }
 
+// Get SOCKS5 proxy URL for WebSocket Gateway
+function getWsProxyUrl(cfg: Record<string, unknown>): string | undefined {
+  const channelCfg = (cfg.channels as Record<string, DiscordChannelConfig>)?.[PLUGIN_ID];
+  // Prefer wssUrl (SOCKS5) for WebSocket, fall back to wsUrl or http proxy
+  return channelCfg?.proxyConfig?.wssUrl ?? channelCfg?.proxyConfig?.wsUrl;
+}
+
 // Plugin runtime for accessing clawdbot internals
 let pluginRuntime: any = null;
 
@@ -209,12 +216,14 @@ const discordPlugin = {
       log?.info(`[${PLUGIN_ID}:${accountId}] Runtime state initialized`);
 
       const proxyUrl = getProxyUrl(cfg);
-      log?.info(`[${PLUGIN_ID}:${accountId}] Proxy URL: ${proxyUrl || 'none'}`);
+      const wsProxyUrl = getWsProxyUrl(cfg);
+      log?.info(`[${PLUGIN_ID}:${accountId}] HTTP Proxy URL: ${proxyUrl || 'none'}`);
+      log?.info(`[${PLUGIN_ID}:${accountId}] SOCKS5 Proxy URL: ${wsProxyUrl || 'none'}`);
       log?.info(`[${PLUGIN_ID}:${accountId}] Creating gateway with intents: GUILDS, GUILD_MESSAGES, DIRECT_MESSAGES, MESSAGE_CONTENT`);
       const pluginConfig: DiscordPluginConfig = {
         ...DEFAULT_CONFIG,
         token: account.token!,
-        proxyUrl,
+        proxyUrl: wsProxyUrl,  // Use SOCKS5 for Gateway
         intents: [
           GatewayIntent.GUILDS,
           GatewayIntent.GUILD_MESSAGES,
