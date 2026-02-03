@@ -12,6 +12,12 @@ import {
   DiscordMessage,
   GatewayIntent,
 } from './types';
+import fs from 'fs/promises';
+import fsSync from 'fs';
+import path from 'path';
+import https from 'https';
+import http from 'http';
+import { URL } from 'url';
 
 export { DiscordChannelPlugin } from './channel';
 export { DiscordChannelPlugin as plugin } from './channel';
@@ -70,6 +76,96 @@ function getWsProxyUrl(cfg: Record<string, unknown>): string | undefined {
   const channelCfg = (cfg.channels as Record<string, DiscordChannelConfig>)?.[PLUGIN_ID];
   // Prefer wssUrl (SOCKS5) for WebSocket, fall back to wsUrl or http proxy
   return channelCfg?.proxyConfig?.wssUrl ?? channelCfg?.proxyConfig?.wsUrl;
+}
+
+// Local upload directory configuration
+const UPLOAD_CONFIG = {
+  uploadDir: '/home/tom/discord/upfile',
+};
+
+/**
+ * Download file to temporary directory
+ * @param fileUrl File URL
+ * @param filename Save filename
+ * @returns Local file path after download
+ */
+async function downloadFileToTemp(fileUrl: string, filename: string): Promise<string> {
+  const tempDir = '/tmp/discord-files';
+  await fs.mkdir(tempDir, { recursive: true });
+
+  const tempFilePath = path.join(tempDir, `${Date.now()}-${filename}`);
+
+  return new Promise((resolve, reject) => {
+    const protocol = fileUrl.startsWith('https://') ? https : http;
+    const url = new URL(fileUrl);
+
+    const requestOptions: https.RequestOptions = {
+      hostname: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: url.pathname + url.search,
+      method: 'GET',
+      timeout: 60000,
+    };
+
+    const req = protocol.request(requestOptions, (res) => {
+      if (res.statusCode !== 200) {
+        reject(new Error(`Download failed: ${res.statusCode}`));
+        return;
+      }
+
+      const fileStream = fsSync.createWriteStream(tempFilePath);
+      res.pipe(fileStream);
+
+      fileStream.on('finish', () => {
+        fileStream.close();
+        resolve(tempFilePath);
+      });
+
+      fileStream.on('error', (err: Error) => {
+        fs.unlink(tempFilePath).catch(() => {});
+        reject(err);
+      });
+    });
+
+    req.on('error', reject);
+    req.setTimeout(60000, () => {
+      req.destroy();
+      reject(new Error('Download timeout'));
+    });
+    req.end();
+  });
+}
+
+/**
+ * Clean up temporary file
+ * @param filePath File path
+ */
+async function cleanupTempFile(filePath: string): Promise<void> {
+  try {
+    await fs.unlink(filePath);
+  } catch {
+    // Ignore cleanup errors
+  }
+}
+
+/**
+ * Upload file to local directory
+ * @param localFilePath Local file path
+ * @param remoteFilename Remote filename
+ * @returns Local file path
+ */
+async function uploadToLocal(localFilePath: string, remoteFilename: string): Promise<string> {
+  // Ensure upload directory exists
+  await fs.mkdir(UPLOAD_CONFIG.uploadDir, { recursive: true });
+
+  // Target file path
+  const targetPath = path.join(UPLOAD_CONFIG.uploadDir, remoteFilename);
+
+  // Copy file to local directory
+  await fs.copyFile(localFilePath, targetPath);
+
+  // Return absolute path
+  return targetPath;
 }
 
 // Plugin runtime for accessing clawdbot internals
@@ -348,7 +444,12 @@ const discordPlugin = {
         log?.info(`[${PLUGIN_ID}:${accountId}] === MESSAGE RECEIVED ===`);
         log?.info(`[${PLUGIN_ID}:${accountId}] Message ID: ${message.id}`);
         log?.info(`[${PLUGIN_ID}:${accountId}] Author: ${message.author.username}#${message.author.discriminator} (bot: ${message.author.bot})`);
-        log?.info(`[${PLUGIN_ID}:${accountId}] Content: "${message.content?.substring(0, 100)}..."`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] Raw message: ${JSON.stringify(message).substring(0, 500)}...`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] Content length: ${message.content?.length || 0}`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] Has attachments: ${Array.isArray(message.attachments)} (${message.attachments?.length || 0} items)`);
+        if (message.attachments && message.attachments.length > 0) {
+          log?.info(`[${PLUGIN_ID}:${accountId}] Attachment details: ${JSON.stringify(message.attachments).substring(0, 500)}`);
+        }
         log?.info(`[${PLUGIN_ID}:${accountId}] Channel ID: ${message.channel_id}`);
         log?.info(`[${PLUGIN_ID}:${accountId}] Guild ID: ${message.guild_id || 'DM'}`);
         log?.info(`[${PLUGIN_ID}:${accountId}] Timestamp: ${message.timestamp}`);
@@ -395,13 +496,57 @@ const discordPlugin = {
 
           // Format the message body
           const messageBody = message.content || '';
+          log?.info(`[${PLUGIN_ID}:${accountId}] messageBody before processing: "${messageBody}"`);
+
+          // Process attachments: download and upload to NAS
+          const uploadedFiles: string[] = [];
+
+          log?.info(`[${PLUGIN_ID}:${accountId}] Checking attachments: ${JSON.stringify(message.attachments)}`);
+
+          if (message.attachments && message.attachments.length > 0) {
+            log?.info(`[${PLUGIN_ID}:${accountId}] Found ${message.attachments.length} attachment(s), proceeding to process...`);
+
+            // Process attachments in parallel for better performance
+            const uploadPromises = message.attachments.map(async (attachment) => {
+              try {
+                log?.info(`[${PLUGIN_ID}:${accountId}] Processing attachment: filename=${attachment.filename}, size=${attachment.size}, url=${attachment.url}`);
+
+                // Download file to temp location
+                const tempFilePath = await downloadFileToTemp(attachment.url, attachment.filename);
+                log?.info(`[${PLUGIN_ID}:${accountId}] Downloaded to temp: ${tempFilePath}`);
+
+                // Upload to local directory
+                const localPath = await uploadToLocal(tempFilePath, attachment.filename);
+                log?.info(`[${PLUGIN_ID}:${accountId}] Saved to local: ${localPath}`);
+                uploadedFiles.push(localPath);
+
+                // Clean up temp file
+                await cleanupTempFile(tempFilePath);
+                log?.info(`[${PLUGIN_ID}:${accountId}] Temp file cleaned up`);
+              } catch (error) {
+                log?.error(`[${PLUGIN_ID}:${accountId}] Failed to process attachment ${attachment.filename}: ${error}`);
+              }
+            });
+
+            await Promise.all(uploadPromises);
+          } else {
+            log?.info(`[${PLUGIN_ID}:${accountId}] No attachments found in message`);
+          }
+
+          // Append uploaded file paths to message body
+          let fullMessageBody = messageBody;
+          if (uploadedFiles.length > 0) {
+            const attachmentInfo = uploadedFiles.map((p) => `📎 ${p}`).join('\n');
+            fullMessageBody = `${messageBody}\n\n${attachmentInfo}`;
+            log?.info(`[${PLUGIN_ID}:${accountId}] fullMessageBody after adding attachments: "${fullMessageBody}"`);
+          }
 
           // Create inbound envelope
           const body = runtime.channel.reply.formatInboundEnvelope({
             channel: 'Discord',
             from: `${message.author.username}#${message.author.discriminator}`,
             timestamp: new Date(message.timestamp).getTime(),
-            body: messageBody,
+            body: fullMessageBody,
             chatType: isDm ? 'direct' : 'channel',
             sender: {
               id: message.author.id,
@@ -412,6 +557,8 @@ const discordPlugin = {
 
           const fromAddress = isDm ? `discord:${message.author.id}` : `discord:channel:${message.channel_id}`;
           const toAddress = fromAddress;
+
+          log?.info(`[${PLUGIN_ID}:${accountId}] Creating context payload: Body="${body}", RawBody="${message.content || ''}"`);
 
           // Create context payload
           const ctxPayload = runtime.channel.reply.finalizeInboundContext({
