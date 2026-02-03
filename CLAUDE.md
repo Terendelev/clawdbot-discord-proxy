@@ -39,3 +39,12 @@ npm run lint         # Lint source files
 - Configured via `proxyUrl` in plugin config
 - Falls back to `DISCORD_PROXY` environment variable
 - Uses `proxy-agent` library for HTTP/HTTPS/WebSocket proxying
+
+## Session Documentation
+
+**SESSION_SUMMARY_2026-02-03.md** - Records the 2026-02-03 session where Gateway auto-reconnect issues were fixed. Contains:
+- Problem diagnosis and root cause analysis
+- Code changes made (gateway.ts, index.ts, api.ts)
+- Configuration format updates
+- Git commits and testing results
+- Notes for future development
