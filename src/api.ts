@@ -5,11 +5,40 @@
 import https from 'https';
 import http from 'http';
 import { URL } from 'url';
-import type { Agent } from 'http';
 import fs from 'fs';
 import path from 'path';
 import FormData from 'form-data';
+import { exec, spawn, ChildProcess } from 'child_process';
+import { promisify } from 'util';
 import { DiscordMessage, DiscordChannel, DiscordUser } from './types';
+
+const execAsync = promisify(exec);
+
+/**
+ * Execute curl command and return output
+ */
+async function curlExecute(
+  args: string[],
+  options: { timeout?: number; maxBuffer?: number } = {}
+): Promise<{ stdout: string; stderr: string }> {
+  const timeout = (options.timeout || 30) * 1000;
+  const maxBuffer = options.maxBuffer || 10 * 1024 * 1024;
+
+  // Build the command string
+  const cmd = 'curl ' + args.map(a => {
+    // Escape special characters in arguments
+    return `"${a.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`')}"`;
+  }).join(' ');
+
+  console.log(`[curlExecute] ${cmd.substring(0, 100)}...`);
+
+  const { stdout, stderr } = await execAsync(cmd, {
+    timeout,
+    maxBuffer,
+  });
+
+  return { stdout, stderr };
+}
 
 export interface ApiOptions {
   token: string;
@@ -25,23 +54,62 @@ export interface RequestOptions {
   query?: Record<string, string>;
 }
 
-// Get proxy agent based on URL type
-function getProxyAgent(proxyUrl?: string): Agent | undefined {
-  if (!proxyUrl) {
-    const envProxy = process.env.DISCORD_PROXY;
-    if (envProxy) {
-      proxyUrl = envProxy;
-    } else {
-      return undefined;
+/**
+ * Make HTTP request through proxy using curl
+ */
+async function curlRequest(
+  url: string,
+  options: {
+    method: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+    proxyUrl?: string;
+    timeout?: number;
+  }
+): Promise<{ statusCode: number; data: string }> {
+  const timeout = options.timeout || 30;
+  const proxyUrl = options.proxyUrl || process.env.DISCORD_PROXY;
+
+  // Build curl command
+  const curlArgs = [
+    '-s', '-S',  // silent but show errors
+    '-X', options.method,
+    '--max-time', String(timeout),
+  ];
+
+  // Add headers
+  if (options.headers) {
+    for (const [key, value] of Object.entries(options.headers)) {
+      curlArgs.push('-H', `${key}: ${value}`);
     }
   }
 
+  // Add body for POST/PUT/PATCH
+  if (options.body && typeof options.body === 'object') {
+    curlArgs.push('-d', JSON.stringify(options.body));
+  }
+
+  // Add proxy
+  if (proxyUrl) {
+    curlArgs.push('-x', proxyUrl);
+  }
+
+  // Add URL
+  curlArgs.push(url);
+
+  console.log(`[curl] curl -X ${options.method} ${url.substring(0, 50)}...`);
+
   try {
-    // Use proxy-agent which supports HTTP, HTTPS, SOCKS4, SOCKS5
-    const { ProxyAgent } = require('proxy-agent');
-    return new ProxyAgent(proxyUrl) as unknown as Agent;
-  } catch {
-    return undefined;
+    const { stdout, stderr } = await curlExecute(curlArgs, { timeout });
+
+    // Parse response headers to get status code
+    const statusMatch = stderr.match(/^HTTP\/\d(?:\.\d)?\s+(\d+)/m);
+    const statusCode = statusMatch ? parseInt(statusMatch[1], 10) : 200;
+
+    return { statusCode, data: stdout };
+  } catch (err: any) {
+    console.error(`[curl] Error: ${err.message}`);
+    throw new Error(`curl failed: ${err.message}`);
   }
 }
 
@@ -50,17 +118,18 @@ function getProxyAgent(proxyUrl?: string): Agent | undefined {
  */
 export class DiscordApi {
   private token: string;
-  private proxyAgent: Agent | undefined;
+  private proxyUrl: string | undefined;
   private baseUrl: string;
 
   constructor(options: ApiOptions) {
     this.token = options.token;
     this.baseUrl = options.baseUrl || `https://discord.com/api/v${options.version || 10}`;
-    this.proxyAgent = getProxyAgent(options.proxyUrl);
+    this.proxyUrl = options.proxyUrl || process.env.DISCORD_PROXY;
+    console.log(`[DiscordApi] Created with proxy: ${this.proxyUrl || 'none'}`);
   }
 
   /**
-   * Make HTTP request
+   * Make HTTP request with proxy support
    */
   private async request<T>(options: RequestOptions): Promise<T> {
     const url = new URL(`${this.baseUrl}${options.path}`);
@@ -77,46 +146,31 @@ export class DiscordApi {
       'User-Agent': 'Clawdbot-Discord-Plugin/1.0',
     };
 
-    const requestOptions: https.RequestOptions = {
-      method: options.method,
-      hostname: url.hostname,
-      port: url.port || (url.protocol === 'https:' ? 443 : 80),
-      path: url.pathname + url.search,
-      headers,
-      agent: this.proxyAgent,
-    };
+    console.log(`[DiscordApi] Making ${options.method} request to: ${url.toString()}`);
 
-    return new Promise((resolve, reject) => {
-      const protocol = url.protocol === 'https:' ? https : http;
-
-      const req = protocol.request(requestOptions, (res) => {
-        let data = '';
-
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
-
-        res.on('end', () => {
-          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-            try {
-              resolve(data ? JSON.parse(data) : undefined);
-            } catch {
-              resolve(data as T);
-            }
-          } else {
-            reject(new Error(`API request failed: ${res.statusCode} ${res.statusMessage}`));
-          }
-        });
+    try {
+      const response = await curlRequest(url.toString(), {
+        method: options.method,
+        headers,
+        body: options.body,
+        proxyUrl: this.proxyUrl,
       });
 
-      req.on('error', reject);
+      console.log(`[DiscordApi] Response: ${response.statusCode}`);
 
-      if (options.body) {
-        req.write(JSON.stringify(options.body));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        try {
+          return response.data ? JSON.parse(response.data) : {} as T;
+        } catch {
+          return response.data as unknown as T;
+        }
+      } else {
+        throw new Error(`API request failed: ${response.statusCode} - ${response.data}`);
       }
-
-      req.end();
-    });
+    } catch (err) {
+      console.error(`[DiscordApi] Request error: ${(err as Error).message}`);
+      throw err;
+    }
   }
 
   /**
@@ -309,7 +363,6 @@ export class DiscordApi {
         port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
         path: urlObj.pathname + urlObj.search,
         method: 'GET',
-        agent: this.proxyAgent,
       };
 
       const req = protocol.request(requestOptions, (res) => {
@@ -338,61 +391,71 @@ export class DiscordApi {
         });
       });
 
-      req.on('error', (err) => {
-        reject(err);
-      });
-
+      req.on('error', reject);
       req.end();
     });
   }
 
   /**
-   * Upload file using multipart/form-data
+   * Upload file using multipart/form-data with curl
    */
   private async uploadFormData(
     channelId: string,
-    form: FormData
+    form: FormData,
+    filename?: string
   ): Promise<DiscordMessage> {
-    const url = new URL(`${this.baseUrl}/channels/${channelId}/messages`);
+    const url = `${this.baseUrl}/channels/${channelId}/messages`;
+    console.log(`[DiscordApi] Uploading to: ${url}, filename: ${filename}`);
 
     return new Promise((resolve, reject) => {
-      const headers = form.getHeaders();
-      const requestOptions: https.RequestOptions = {
-        method: 'POST',
-        hostname: url.hostname,
-        port: url.port || (url.protocol === 'https:' ? 443 : 80),
-        path: url.pathname + url.search,
-        headers: {
-          ...headers,
-          Authorization: `Bot ${this.token}`,
-          'User-Agent': 'Clawdbot-Discord-Plugin/1.0',
-        },
-        agent: this.proxyAgent,
-      };
+      const authHeader = `Bot ${this.token}`;
 
-      const protocol = url.protocol === 'https:' ? https : http;
-      const req = protocol.request(requestOptions, (res) => {
-        let data = '';
+      // Create a temporary file with form data
+      const tempFile = `/tmp/discord-upload-form-${Date.now()}`;
+      const writeStream = fs.createWriteStream(tempFile);
 
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
+      form.pipe(writeStream);
 
-        res.on('end', () => {
-          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-            try {
-              resolve(JSON.parse(data) as DiscordMessage);
-            } catch {
-              reject(new Error('Failed to parse response'));
-            }
-          } else {
-            reject(new Error(`Upload failed: ${res.statusCode} ${res.statusMessage} - ${data}`));
+      writeStream.on('finish', async () => {
+        try {
+          // Use curl to upload with the correct filename
+          // curl syntax: -F "file=@filepath;type=mime;filename=actualname"
+          const curlArgs = [
+            '-s', '-S',
+            '-X', 'POST',
+            '-H', `Authorization: ${authHeader}`,
+            '-H', `User-Agent: Clawdbot-Discord-Plugin/1.0`,
+            '-F', `file=@${tempFile};type=${this.getMimeType(filename || 'file')};filename=${filename || 'file'}`,
+            '-F', `payload_json={"content":""}`,
+            url,
+          ];
+
+          if (this.proxyUrl) {
+            curlArgs.splice(1, 0, '-x', this.proxyUrl);
           }
-        });
+
+          const { stdout, stderr } = await curlExecute(curlArgs, {
+            timeout: 120, // 2 minutes for uploads
+            maxBuffer: 50 * 1024 * 1024,
+          });
+
+          // Clean up temp file
+          fs.unlink(tempFile, () => {});
+
+          console.log(`[DiscordApi] Upload response: ${stderr.substring(0, 100)}`);
+
+          try {
+            const result = JSON.parse(stdout) as DiscordMessage;
+            resolve(result);
+          } catch {
+            reject(new Error(`Failed to parse upload response: ${stdout}`));
+          }
+        } catch (err) {
+          reject(err);
+        }
       });
 
-      req.on('error', reject);
-      form.pipe(req);
+      writeStream.on('error', reject);
     });
   }
 
@@ -430,7 +493,7 @@ export class DiscordApi {
       // Create multipart form
       const form = new FormData();
 
-      // Add file as 'attachment' field
+      // Add file
       form.append('file', fileBuffer, {
         filename,
         contentType: this.getMimeType(filename),
@@ -454,7 +517,7 @@ export class DiscordApi {
       form.append('payload_json', JSON.stringify(payload));
 
       // Upload
-      return await this.uploadFormData(channelId, form);
+      return await this.uploadFormData(channelId, form, filename);
     } finally {
       // Clean up temporary file
       if (cleanupNeeded && tempFilePath) {

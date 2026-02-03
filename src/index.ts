@@ -363,39 +363,69 @@ const discordPlugin = {
       accountId?: string;
       cfg: Record<string, unknown>;
     }) => {
+      console.log(`[${PLUGIN_ID}] sendMedia called: to=${to}, text=${text}, mediaUrl=${mediaUrl}, path=${path}`);
+
       const accountIdStr = accountId ?? 'default';
       const account = resolveAccount(cfg, accountIdStr);
+      console.log(`[${PLUGIN_ID}] Account: ${accountIdStr}, hasToken: ${!!account.token}`);
+
       const runtime = getRuntime(accountIdStr);
+      console.log(`[${PLUGIN_ID}] Runtime API exists: ${!!runtime.api}`);
 
       // Ensure API is created
       if (!runtime.api) {
         const proxyUrl = getProxyUrl(cfg);
+        console.log(`[${PLUGIN_ID}] Creating API with proxy: ${proxyUrl}`);
         runtime.api = createApi(account.token!, proxyUrl);
       }
 
       // Use path or mediaUrl as the file source
       const filePath = path || mediaUrl;
+      console.log(`[${PLUGIN_ID}] File path: ${filePath}`);
+
       if (!filePath) {
+        console.log(`[${PLUGIN_ID}] No file path provided`);
         return { ok: false, error: 'No file path provided' };
       }
 
-      // Resolve channel ID (handle discord:userId and user:userId formats for DMs)
+      // Test API connection first
+      try {
+        console.log(`[${PLUGIN_ID}] Testing API connection...`);
+        const me = await runtime.api!.getCurrentUser();
+        console.log(`[${PLUGIN_ID}] API connected as: ${me.username}#${me.discriminator}`);
+      } catch (error) {
+        console.error(`[${PLUGIN_ID}] API connection failed: ${error}`);
+        return { ok: false, error: `API connection failed: ${(error as Error).message}` };
+      }
+
+      // Resolve channel ID (handle discord:userId, user:userId, and channel:channelId formats)
       let channelId = to;
       const userId = extractUserId(to);
+      console.log(`[${PLUGIN_ID}] userId from to: ${userId}`);
+
       if (userId) {
+        console.log(`[${PLUGIN_ID}] Creating DM channel for user: ${userId}`);
         // Create DM channel for user
         const dmChannel = await runtime.api!.createDm(userId);
         channelId = dmChannel.id;
+        console.log(`[${PLUGIN_ID}] DM channel created: ${channelId}`);
+      } else if (to.startsWith('channel:')) {
+        // Extract numeric channel ID from channel:ID format
+        channelId = to.replace('channel:', '');
+        console.log(`[${PLUGIN_ID}] Using channel ID directly: ${channelId}`);
       }
 
+      console.log(`[${PLUGIN_ID}] Uploading file to channel: ${channelId}`);
       try {
         // Upload file with optional text content and reply reference
-        await runtime.api!.uploadFile(channelId, filePath, {
+        const result = await runtime.api!.uploadFile(channelId, filePath, {
           content: text,
           message_reference: replyToId ? { message_id: replyToId } : undefined,
         });
+        console.log(`[${PLUGIN_ID}] File uploaded successfully: ${JSON.stringify(result).substring(0, 100)}`);
         return { ok: true };
       } catch (error) {
+        console.error(`[${PLUGIN_ID}] Upload failed: ${error}`);
         return { ok: false, error: (error as Error).message };
       }
     },
@@ -632,7 +662,7 @@ const discordPlugin = {
 
           // Track if we got a response
           let hasResponse = false;
-          const responseTimeout = 60000; // 60 seconds timeout
+          const responseTimeout = 300000; // 300 seconds (5 minutes) timeout for agent response
           let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
           const timeoutPromise = new Promise<never>((_, reject) => {
