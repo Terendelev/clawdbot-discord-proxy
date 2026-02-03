@@ -87,13 +87,19 @@ const UPLOAD_CONFIG = {
  * Download file to temporary directory
  * @param fileUrl File URL
  * @param filename Save filename
+ * @param proxyUrl Optional proxy URL
  * @returns Local file path after download
  */
-async function downloadFileToTemp(fileUrl: string, filename: string): Promise<string> {
+async function downloadFileToTemp(fileUrl: string, filename: string, proxyUrl?: string): Promise<string> {
   const tempDir = '/tmp/discord-files';
   await fs.mkdir(tempDir, { recursive: true });
 
   const tempFilePath = path.join(tempDir, `${Date.now()}-${filename}`);
+
+  // Check for proxy from environment if not provided
+  if (!proxyUrl) {
+    proxyUrl = process.env.DISCORD_PROXY;
+  }
 
   return new Promise((resolve, reject) => {
     const protocol = fileUrl.startsWith('https://') ? https : http;
@@ -106,6 +112,18 @@ async function downloadFileToTemp(fileUrl: string, filename: string): Promise<st
       method: 'GET',
       timeout: 60000,
     };
+
+    // Use proxy if configured
+    let agent: any = undefined;
+    if (proxyUrl) {
+      try {
+        const { ProxyAgent } = require('proxy-agent');
+        agent = new ProxyAgent(proxyUrl);
+        requestOptions.agent = agent;
+      } catch (err) {
+        console.error(`[${PLUGIN_ID}] Failed to create proxy agent: ${err}`);
+      }
+    }
 
     const req = protocol.request(requestOptions, (res) => {
       if (res.statusCode !== 200) {
@@ -498,7 +516,7 @@ const discordPlugin = {
           const messageBody = message.content || '';
           log?.info(`[${PLUGIN_ID}:${accountId}] messageBody before processing: "${messageBody}"`);
 
-          // Process attachments: download and upload to NAS
+          // Process attachments: download and upload to local directory
           const uploadedFiles: string[] = [];
 
           log?.info(`[${PLUGIN_ID}:${accountId}] Checking attachments: ${JSON.stringify(message.attachments)}`);
@@ -507,12 +525,13 @@ const discordPlugin = {
             log?.info(`[${PLUGIN_ID}:${accountId}] Found ${message.attachments.length} attachment(s), proceeding to process...`);
 
             // Process attachments in parallel for better performance
+            const proxyUrl = getProxyUrl(cfg);
             const uploadPromises = message.attachments.map(async (attachment) => {
               try {
                 log?.info(`[${PLUGIN_ID}:${accountId}] Processing attachment: filename=${attachment.filename}, size=${attachment.size}, url=${attachment.url}`);
 
-                // Download file to temp location
-                const tempFilePath = await downloadFileToTemp(attachment.url, attachment.filename);
+                // Download file to temp location (with proxy if configured)
+                const tempFilePath = await downloadFileToTemp(attachment.url, attachment.filename, proxyUrl);
                 log?.info(`[${PLUGIN_ID}:${accountId}] Downloaded to temp: ${tempFilePath}`);
 
                 // Upload to local directory
@@ -532,6 +551,31 @@ const discordPlugin = {
           } else {
             log?.info(`[${PLUGIN_ID}:${accountId}] No attachments found in message`);
           }
+
+          // Check embeds for images/media
+          const embedFiles: string[] = [];
+          log?.info(`[${PLUGIN_ID}:${accountId}] Checking embeds: ${JSON.stringify(message.embeds)}`);
+
+          if (message.embeds && message.embeds.length > 0) {
+            log?.info(`[${PLUGIN_ID}:${accountId}] Found ${message.embeds.length} embed(s)`);
+            for (const embed of message.embeds) {
+              const embedObj = embed as { type?: string; thumbnail?: { url?: string }; image?: { url?: string } };
+              log?.info(`[${PLUGIN_ID}:${accountId}] Embed type: ${embedObj.type}`);
+              if (embedObj.type === 'image') {
+                log?.info(`[${PLUGIN_ID}:${accountId}] Embed image URL: ${embedObj.image?.url || embedObj.thumbnail?.url}`);
+              } else if (embedObj.type === 'rich' || embedObj.type === 'article') {
+                log?.info(`[${PLUGIN_ID}:${accountId}] Embed thumbnail: ${embedObj.thumbnail?.url}`);
+                log?.info(`[${PLUGIN_ID}:${accountId}] Embed image: ${embedObj.image?.url}`);
+              }
+            }
+          } else {
+            log?.info(`[${PLUGIN_ID}:${accountId}] No embeds found in message`);
+          }
+
+          // Check content for URLs
+          const urlRegex = /https?:\/\/[^\s]+/g;
+          const urlsInContent = message.content.match(urlRegex);
+          log?.info(`[${PLUGIN_ID}:${accountId}] Checking content for URLs: ${urlsInContent ? JSON.stringify(urlsInContent) : 'none'}`);
 
           // Append uploaded file paths to message body
           let fullMessageBody = messageBody;
