@@ -218,5 +218,6 @@ export interface ChannelPlugin {
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   sendMessage: (channelId: string, content: string) => Promise<void>;
+  sendFile: (channelId: string, filePath: string, filename?: string) => Promise<void>;
   onMessage: (callback: (message: DiscordMessage) => void) => void;
 }

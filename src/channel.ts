@@ -116,6 +116,19 @@ export class DiscordChannelPlugin implements ChannelPlugin {
   }
 
   /**
+   * Send file to channel
+   */
+  async sendFile(channelId: string, filePath: string, filename?: string): Promise<void> {
+    if (!this.api) {
+      throw new Error('Plugin not initialized');
+    }
+
+    await this.api.uploadFile(channelId, filePath, {
+      filename,
+    });
+  }
+
+  /**
    * Register message handler
    */
   onMessage(callback: (message: DiscordMessage) => void): void {
