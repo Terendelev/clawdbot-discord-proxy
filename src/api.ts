@@ -55,7 +55,74 @@ export interface RequestOptions {
 }
 
 /**
+ * Make HTTP request through proxy using native Node.js http/https
+ * More reliable than curl for JSON requests
+ */
+async function httpRequest(
+  url: string,
+  options: {
+    method: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+    proxyUrl?: string;
+    timeout?: number;
+  }
+): Promise<{ statusCode: number; data: string }> {
+  const timeout = options.timeout || 30;
+  const proxyUrl = options.proxyUrl || process.env.DISCORD_PROXY;
+
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const protocol = urlObj.protocol === 'https:' ? https : http;
+
+    const requestOptions: https.RequestOptions = {
+      method: options.method,
+      hostname: urlObj.hostname,
+      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      timeout: timeout * 1000,
+    };
+
+    // Use proxy agent if configured
+    if (proxyUrl) {
+      try {
+        const { ProxyAgent } = require('proxy-agent');
+        requestOptions.agent = new ProxyAgent(proxyUrl);
+      } catch {
+        // Proxy agent not available, continue without proxy
+      }
+    }
+
+    const req = protocol.request(requestOptions, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        resolve({ statusCode: res.statusCode || 500, data });
+      });
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => {
+      reject(new Error('Request timeout'));
+    });
+
+    if (options.body) {
+      req.write(JSON.stringify(options.body));
+    }
+
+    req.end();
+  });
+}
+
+/**
  * Make HTTP request through proxy using curl
+ * Used for file uploads where form.pipe is needed
  */
 async function curlRequest(
   url: string,
@@ -89,12 +156,12 @@ async function curlRequest(
     curlArgs.push('-d', JSON.stringify(options.body));
   }
 
-  // Add proxy
+  // Add proxy BEFORE URL (important for curl to work correctly)
   if (proxyUrl) {
     curlArgs.push('-x', proxyUrl);
   }
 
-  // Add URL
+  // Add URL last
   curlArgs.push(url);
 
   console.log(`[curl] curl -X ${options.method} ${url.substring(0, 50)}...`);
@@ -130,6 +197,7 @@ export class DiscordApi {
 
   /**
    * Make HTTP request with proxy support
+   * Uses native http/https for JSON requests (more reliable)
    */
   private async request<T>(options: RequestOptions): Promise<T> {
     const url = new URL(`${this.baseUrl}${options.path}`);
@@ -140,18 +208,16 @@ export class DiscordApi {
       }
     }
 
-    const headers: Record<string, string> = {
-      Authorization: `Bot ${this.token}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'Clawdbot-Discord-Plugin/1.0',
-    };
-
     console.log(`[DiscordApi] Making ${options.method} request to: ${url.toString()}`);
 
     try {
-      const response = await curlRequest(url.toString(), {
+      const response = await httpRequest(url.toString(), {
         method: options.method,
-        headers,
+        headers: {
+          Authorization: `Bot ${this.token}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'Clawdbot-Discord-Plugin/1.0',
+        },
         body: options.body,
         proxyUrl: this.proxyUrl,
       });
