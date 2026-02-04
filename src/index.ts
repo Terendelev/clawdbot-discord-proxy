@@ -13,6 +13,10 @@ import {
   GatewayIntent,
 } from './types';
 import { fetchPluralKitMessage } from './pluralkit';
+import { createBuiltinCommands } from './commands/handlers';
+import { registerBuiltinCommands } from './commands/register';
+import { parseCommandInteraction } from './commands/parse';
+import { sendCommandResponse } from './commands/response';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
@@ -489,7 +493,7 @@ const discordPlugin = {
       log?.info(`[${PLUGIN_ID}:${accountId}] Gateway object created, attaching event handlers...`);
 
       // Set up event handlers
-      runtime.gateway.on('ready', (data: { user: { username: string; discriminator: string } }) => {
+      runtime.gateway.on('ready', async (data: { user: { id: string; username: string; discriminator: string } }) => {
         log?.info(`[${PLUGIN_ID}:${accountId}] === GATEWAY READY === Connected as ${data.user.username}#${data.user.discriminator}`);
         runtime.connected = true;
         log?.info(`[${PLUGIN_ID}:${accountId}] Connected as ${data.user.username}#${data.user.discriminator}`);
@@ -499,6 +503,15 @@ const discordPlugin = {
           connected: true,
           lastConnectedAt: Date.now(),
         });
+
+        // Register slash commands
+        try {
+          const api = runtime.api || createApi(account.token!, getProxyUrl(cfg));
+          await registerBuiltinCommands(api, data.user.id);
+          log?.info(`[${PLUGIN_ID}:${accountId}] Slash commands registered`);
+        } catch (error) {
+          log?.error(`[${PLUGIN_ID}:${accountId}] Failed to register commands: ${error}`);
+        }
       });
 
       runtime.gateway.on('message', async (message: DiscordMessage) => {
@@ -808,6 +821,50 @@ const discordPlugin = {
           }
         } catch (err) {
           log?.error(`[${PLUGIN_ID}:${accountId}] Message processing failed: ${err}`);
+        }
+      });
+
+      // Handle slash command interactions
+      const builtinCommands = createBuiltinCommands(runtime.gateway);
+      runtime.gateway.on('interaction', async (interaction: {
+        id: string;
+        token: string;
+        type: number;
+        data: {
+          id: string;
+          name: string;
+          type: number;
+          options?: Array<{ name: string; type: number; value?: string | number | boolean }>;
+        };
+      }) => {
+        log?.info(`[${PLUGIN_ID}:${accountId}] Interaction received: type=${interaction.type}, name=${interaction.data.name}`);
+
+        // Only handle application commands (type=2)
+        if (interaction.type !== 2) {
+          return;
+        }
+
+        const parsed = parseCommandInteraction(interaction.data);
+        const handler = builtinCommands[parsed.name];
+
+        if (!handler) {
+          log?.info(`[${PLUGIN_ID}:${accountId}] Unknown command: ${parsed.name}`);
+          return;
+        }
+
+        try {
+          const api = runtime.api || createApi(account.token!, getProxyUrl(cfg));
+          const response = await handler(parsed.options);
+          await sendCommandResponse(api, interaction.id, interaction.token, response);
+          log?.info(`[${PLUGIN_ID}:${accountId}] Command ${parsed.name} responded successfully`);
+        } catch (error) {
+          log?.error(`[${PLUGIN_ID}:${accountId}] Command ${parsed.name} failed: ${error}`);
+          try {
+            const api = runtime.api || createApi(account.token!, getProxyUrl(cfg));
+            await sendCommandResponse(api, interaction.id, interaction.token, `❌ 命令执行失败: ${error}`);
+          } catch (sendError) {
+            log?.error(`[${PLUGIN_ID}:${accountId}] Failed to send error response: ${sendError}`);
+          }
         }
       });
 

@@ -199,7 +199,7 @@ export class DiscordApi {
    * Make HTTP request with proxy support
    * Uses native http/https for JSON requests (more reliable)
    */
-  private async request<T>(options: RequestOptions): Promise<T> {
+  async call<T>(options: RequestOptions): Promise<T> {
     const url = new URL(`${this.baseUrl}${options.path}`);
 
     if (options.query) {
@@ -243,7 +243,7 @@ export class DiscordApi {
    * Get current user
    */
   async getCurrentUser(): Promise<DiscordUser> {
-    return this.request<DiscordUser>({
+    return this.call<DiscordUser>({
       method: 'GET',
       path: '/users/@me',
     });
@@ -253,7 +253,7 @@ export class DiscordApi {
    * Get channel
    */
   async getChannel(channelId: string): Promise<DiscordChannel> {
-    return this.request<DiscordChannel>({
+    return this.call<DiscordChannel>({
       method: 'GET',
       path: `/channels/${channelId}`,
     });
@@ -271,7 +271,7 @@ export class DiscordApi {
       message_reference?: { message_id: string };
     }
   ): Promise<DiscordMessage> {
-    return this.request<DiscordMessage>({
+    return this.call<DiscordMessage>({
       method: 'POST',
       path: `/channels/${channelId}/messages`,
       body: {
@@ -291,7 +291,7 @@ export class DiscordApi {
     messageId: string,
     content: string
   ): Promise<DiscordMessage> {
-    return this.request<DiscordMessage>({
+    return this.call<DiscordMessage>({
       method: 'PATCH',
       path: `/channels/${channelId}/messages/${messageId}`,
       body: { content },
@@ -302,7 +302,7 @@ export class DiscordApi {
    * Delete message
    */
   async deleteMessage(channelId: string, messageId: string): Promise<void> {
-    await this.request({
+    await this.call({
       method: 'DELETE',
       path: `/channels/${channelId}/messages/${messageId}`,
     });
@@ -327,7 +327,7 @@ export class DiscordApi {
     if (options?.before) query.before = options.before;
     if (options?.after) query.after = options.after;
 
-    return this.request<DiscordMessage[]>({
+    return this.call<DiscordMessage[]>({
       method: 'GET',
       path: `/channels/${channelId}/messages`,
       query,
@@ -344,7 +344,7 @@ export class DiscordApi {
   ): Promise<void> {
     const encodedEmoji = encodeURIComponent(emoji);
 
-    await this.request({
+    await this.call({
       method: 'PUT',
       path: `/channels/${channelId}/messages/${messageId}/reactions/${encodedEmoji}/@me`,
     });
@@ -361,7 +361,7 @@ export class DiscordApi {
   ): Promise<void> {
     const encodedEmoji = encodeURIComponent(emoji);
 
-    await this.request({
+    await this.call({
       method: 'DELETE',
       path: `/channels/${channelId}/messages/${messageId}/reactions/${encodedEmoji}/${userId || '@me'}`,
     });
@@ -371,7 +371,7 @@ export class DiscordApi {
    * Create DM channel
    */
   async createDm(recipientId: string): Promise<DiscordChannel> {
-    return this.request<DiscordChannel>({
+    return this.call<DiscordChannel>({
       method: 'POST',
       path: '/users/@me/channels',
       body: { recipient_id: recipientId },
@@ -382,7 +382,7 @@ export class DiscordApi {
    * Join guild thread
    */
   async joinThread(channelId: string): Promise<void> {
-    await this.request({
+    await this.call({
       method: 'POST',
       path: `/channels/${channelId}/thread-members/@me`,
     });
@@ -392,7 +392,7 @@ export class DiscordApi {
    * Leave guild thread
    */
   async leaveThread(channelId: string): Promise<void> {
-    await this.request({
+    await this.call({
       method: 'DELETE',
       path: `/channels/${channelId}/thread-members/@me`,
     });

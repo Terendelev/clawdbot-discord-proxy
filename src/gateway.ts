@@ -55,6 +55,7 @@ export interface GatewayEventMap {
   guildDelete: { id: string; unavailable?: boolean };
   channelCreate: DiscordChannel;
   channelDelete: DiscordChannel;
+  interaction: { id: string; token: string; type: number; data: { id: string; name: string; type: number; options?: Array<{ name: string; type: number; value?: string | number | boolean }> } };
   error: Error;
   closed: { code: number; reason: string };
   reconnecting: void;
@@ -264,6 +265,19 @@ export class DiscordGateway {
         break;
       case 'CHANNEL_DELETE':
         this.emit('channelDelete', data as DiscordChannel);
+        break;
+      case 'INTERACTION_CREATE':
+        this.emit('interaction', data as {
+          id: string;
+          token: string;
+          type: number;
+          data: {
+            id: string;
+            name: string;
+            type: number;
+            options?: Array<{ name: string; type: number; value?: string | number | boolean }>;
+          };
+        });
         break;
     }
   }
