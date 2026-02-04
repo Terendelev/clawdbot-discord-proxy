@@ -211,6 +211,11 @@ export interface DiscordPluginConfig {
     enabled: boolean;
     token?: string;
   };
+  approvals?: {
+    enabled: boolean;
+    approvers: string[]; // Discord user IDs
+    timeoutSeconds: number;
+  };
 }
 
 /** Channel plugin interface */

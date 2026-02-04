@@ -20,6 +20,11 @@ export const DEFAULT_CONFIG: DiscordPluginConfig = {
   pluralkit: {
     enabled: false,
   },
+  approvals: {
+    enabled: false,
+    approvers: [],
+    timeoutSeconds: 60,
+  },
 };
 
 /**
@@ -37,6 +42,13 @@ export function parseConfig(raw: Record<string, unknown>): DiscordPluginConfig {
     pluralkit: (raw.pluralkit as any) ? {
       enabled: Boolean((raw.pluralkit as any).enabled ?? process.env.PLURALKIT_ENABLED === 'true'),
       token: (raw.pluralkit as any).token ? String((raw.pluralkit as any).token) : process.env.PLURALKIT_TOKEN,
+    } : undefined,
+    approvals: (raw.approvals as any) ? {
+      enabled: Boolean((raw.approvals as any).enabled ?? false),
+      approvers: Array.isArray((raw.approvals as any).approvers)
+        ? (raw.approvals as any).approvers.map(String)
+        : [],
+      timeoutSeconds: Number((raw.approvals as any).timeoutSeconds) || 60,
     } : undefined,
   };
 
