@@ -17,6 +17,9 @@ import { createBuiltinCommands } from './commands/handlers';
 import { registerBuiltinCommands } from './commands/register';
 import { parseCommandInteraction } from './commands/parse';
 import { sendCommandResponse } from './commands/response';
+import { isDangerous, sanitizeCommand } from './approvals/safety';
+import { approvalManager } from './approvals/manager';
+import { sendApprovalRequest, handleApprovalButton } from './approvals/sender';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
@@ -843,9 +846,26 @@ const discordPlugin = {
           name: string;
           type: number;
           options?: Array<{ name: string; type: number; value?: string | number | boolean }>;
+          custom_id?: string;
+          component_type?: number;
         };
+        message?: { id: string };
+        user?: { id: string; username: string; discriminator: string };
       }) => {
-        log?.info(`[${PLUGIN_ID}:${accountId}] Interaction received: type=${interaction.type}, name=${interaction.data.name}`);
+        log?.info(`[${PLUGIN_ID}:${accountId}] Interaction received: type=${interaction.type}`);
+
+        // Handle component interactions (button clicks for approvals)
+        if (interaction.type === 3 && interaction.data.custom_id?.startsWith('approval:')) {
+          log?.info(`[${PLUGIN_ID}:${accountId}] Approval button clicked: ${interaction.data.custom_id}`);
+          const api = runtime.api || createApi(account.token!, getProxyUrl(cfg));
+          await handleApprovalButton(api, {
+            id: interaction.id,
+            custom_id: interaction.data.custom_id!,
+            message: interaction.message!,
+            user: interaction.user!,
+          });
+          return;
+        }
 
         // Only handle application commands (type=2)
         if (interaction.type !== 2) {
