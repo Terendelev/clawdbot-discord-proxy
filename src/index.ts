@@ -572,8 +572,16 @@ const discordPlugin = {
 
         // Check if message should be ignored (bot messages, etc.)
         // BUT: PluralKit/webhook messages should NOT be ignored - they are proxy messages
-        if (message.author.bot && !isWebhookMessage && !pkInfo) {
+        // Also ignore slash command messages (they have application_id set)
+        const isSlashCommandMessage = !!(message as DiscordMessage).application_id;
+        if (message.author.bot && !isWebhookMessage && !pkInfo && !isSlashCommandMessage) {
           log?.info(`[${PLUGIN_ID}:${accountId}] Ignoring bot message`);
+          return;
+        }
+
+        // Skip slash command messages - they are handled via INTERACTION_CREATE
+        if (isSlashCommandMessage) {
+          log?.info(`[${PLUGIN_ID}:${accountId}] Ignoring slash command message`);
           return;
         }
 
