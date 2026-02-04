@@ -14,6 +14,7 @@ import {
   ChannelPlugin,
 } from './types';
 import { parseConfig, validateConfig, DEFAULT_CONFIG } from './config';
+import { fetchPluralKitMessage } from './pluralkit';
 
 export interface ChannelPluginOptions {
   config?: Record<string, unknown>;
@@ -75,8 +76,8 @@ export class DiscordChannelPlugin implements ChannelPlugin {
       console.log(`Connected as ${data.user.username}#${data.user.discriminator}`);
     });
 
-    this.gateway.on('message', (message) => {
-      this.handleIncomingMessage(message);
+    this.gateway.on('message', async (message) => {
+      await this.handleIncomingMessage(message);
     });
 
     this.gateway.on('error', (error) => {
@@ -138,12 +139,28 @@ export class DiscordChannelPlugin implements ChannelPlugin {
   /**
    * Handle incoming message
    */
-  private handleIncomingMessage(message: DiscordMessage): void {
+  private async handleIncomingMessage(message: DiscordMessage): Promise<void> {
     for (const handler of this.messageHandlers) {
       try {
         handler(message);
       } catch (error) {
         console.error('Error in message handler:', error);
+      }
+    }
+
+    if (this.config.pluralkit?.enabled) {
+      try {
+        const pkInfo = await fetchPluralKitMessage(message.id, this.config.pluralkit);
+        if (pkInfo) {
+          (message as DiscordMessage & { pkInfo: any }).pkInfo = pkInfo;
+          console.log(
+            `[PluralKit] Message ${message.id} - System: ${pkInfo.system?.name || 'N/A'}, ` +
+            `Member: ${pkInfo.member?.display_name || pkInfo.member?.name || 'N/A'}, ` +
+            `Real User: ${pkInfo.sender || 'N/A'}`
+          );
+        }
+      } catch (error) {
+        console.warn(`PluralKit query failed: ${error}`);
       }
     }
   }

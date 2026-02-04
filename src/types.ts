@@ -207,6 +207,10 @@ export interface DiscordPluginConfig {
   defaultChannel?: string;
   autoReconnect: boolean;
   heartbeatInterval: number;
+  pluralkit?: {
+    enabled: boolean;
+    token?: string;
+  };
 }
 
 /** Channel plugin interface */
@@ -220,4 +224,25 @@ export interface ChannelPlugin {
   sendMessage: (channelId: string, content: string) => Promise<void>;
   sendFile: (channelId: string, filePath: string, filename?: string) => Promise<void>;
   onMessage: (callback: (message: DiscordMessage) => void) => void;
+}
+
+/** PluralKit message information extension */
+export interface DiscordMessage {
+  pkInfo?: {
+    id: string;
+    original?: string;
+    sender?: string;
+    system?: {
+      id: string;
+      name?: string | null;
+      tag?: string | null;
+    };
+    member?: {
+      id: string;
+      name?: string | null;
+      display_name?: string | null;
+    };
+    content?: string;
+    timestamp?: string;
+  };
 }
