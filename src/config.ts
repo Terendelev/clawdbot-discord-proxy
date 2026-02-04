@@ -17,6 +17,7 @@ export const DEFAULT_CONFIG: DiscordPluginConfig = {
   defaultChannel: undefined,
   autoReconnect: true,
   heartbeatInterval: 45000,
+  connectionTimeout: 45000,
   pluralkit: {
     enabled: false,
   },
@@ -39,6 +40,7 @@ export function parseConfig(raw: Record<string, unknown>): DiscordPluginConfig {
     defaultChannel: raw.defaultChannel ? String(raw.defaultChannel) : undefined,
     autoReconnect: raw.autoReconnect !== false,
     heartbeatInterval: Number(raw.heartbeatInterval) || DEFAULT_CONFIG.heartbeatInterval,
+    connectionTimeout: Number(raw.connectionTimeout) || DEFAULT_CONFIG.connectionTimeout,
     pluralkit: (raw.pluralkit as any) ? {
       enabled: Boolean((raw.pluralkit as any).enabled ?? process.env.PLURALKIT_ENABLED === 'true'),
       token: (raw.pluralkit as any).token ? String((raw.pluralkit as any).token) : process.env.PLURALKIT_TOKEN,

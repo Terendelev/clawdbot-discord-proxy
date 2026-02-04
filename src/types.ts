@@ -207,6 +207,7 @@ export interface DiscordPluginConfig {
   defaultChannel?: string;
   autoReconnect: boolean;
   heartbeatInterval: number;
+  connectionTimeout: number;
   pluralkit?: {
     enabled: boolean;
     token?: string;

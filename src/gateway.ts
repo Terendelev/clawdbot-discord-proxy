@@ -46,6 +46,7 @@ export interface GatewayOptions {
   intents: GatewayIntent[];
   autoReconnect?: boolean;
   heartbeatInterval?: number;
+  connectionTimeout?: number;
 }
 
 export interface GatewayEventMap {
@@ -98,6 +99,7 @@ export class DiscordGateway {
   private sessionId: string | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectionTimeout: number;
   private connected: boolean = false;
   private eventHandlers: Map<string, Set<(data: unknown) => void>> = new Map();
 
@@ -107,6 +109,7 @@ export class DiscordGateway {
     this.intents = calculateIntentBits(options.intents);
     this.autoReconnect = options.autoReconnect !== false;
     this.heartbeatInterval = options.heartbeatInterval || 45000;
+    this.connectionTimeout = options.connectionTimeout || 45000;
   }
 
   /**
@@ -151,7 +154,7 @@ export class DiscordGateway {
         if (!this.connected) {
           reject(new Error('Gateway connection timeout'));
         }
-      }, 15000);
+      }, this.connectionTimeout);
     });
   }
 
@@ -430,5 +433,6 @@ export function createGateway(
     intents: config.intents,
     autoReconnect: config.autoReconnect,
     heartbeatInterval: config.heartbeatInterval,
+    connectionTimeout: config.connectionTimeout,
   });
 }
