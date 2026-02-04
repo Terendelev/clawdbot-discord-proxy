@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [1.0.1] - 2026-02-03
+
+### Fixed
+- **curl Argument Order**: Moved proxy `-x` argument before URL in curl command to fix "curl: no URL specified!" error
+- **Message Delivery**: Added `httpRequest` function as fallback for more reliable JSON requests
+- **Binary File Upload**: Improved file upload reliability for images and audio files
+
+### Added
+- Comprehensive Skill documentation (`clawdbot-discord-proxy` Skill)
+- Troubleshooting guide for common issues
+- File upload examples and usage patterns
+
+### Changed
+- Improved error handling for proxy connections
+- Better logging for debugging upload issues
 
 ### Added
 - Integration tests for Discord connection via proxy (`src/tests/proxy-connection.test.ts`)
@@ -118,5 +132,6 @@ clawdbot-discord/
 
 ---
 
-[Unreleased]: https://github.com/Terendelev/clawdbot-discord-proxy/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Terendelev/clawdbot-discord-proxy/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/Terendelev/clawdbot-discord-proxy/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Terendelev/clawdbot-discord-proxy/releases/tag/v1.0.0
