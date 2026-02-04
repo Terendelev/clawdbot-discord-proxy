@@ -140,14 +140,7 @@ export class DiscordChannelPlugin implements ChannelPlugin {
    * Handle incoming message
    */
   private async handleIncomingMessage(message: DiscordMessage): Promise<void> {
-    for (const handler of this.messageHandlers) {
-      try {
-        handler(message);
-      } catch (error) {
-        console.error('Error in message handler:', error);
-      }
-    }
-
+    // Fetch PluralKit info first before calling handlers
     if (this.config.pluralkit?.enabled) {
       try {
         const pkInfo = await fetchPluralKitMessage(message.id, this.config.pluralkit);
@@ -161,6 +154,14 @@ export class DiscordChannelPlugin implements ChannelPlugin {
         }
       } catch (error) {
         console.warn(`PluralKit query failed: ${error}`);
+      }
+    }
+
+    for (const handler of this.messageHandlers) {
+      try {
+        handler(message);
+      } catch (error) {
+        console.error('Error in message handler:', error);
       }
     }
   }

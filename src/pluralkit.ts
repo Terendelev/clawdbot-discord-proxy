@@ -1,8 +1,10 @@
 /**
  * PluralKit API Client
- * 
+ *
  * Handles interaction with PluralKit API for proxy message detection
  */
+
+import { ProxyAgent } from 'proxy-agent';
 
 export interface PluralKitConfig {
   enabled: boolean;
@@ -37,15 +39,30 @@ export interface PluralKitMessage {
 const PLURALKIT_API_BASE = 'https://api.pluralkit.me/v2';
 
 /**
+ * Get proxy agent for HTTP requests
+ * Uses DISCORD_PROXY env var if no explicit proxyUrl provided
+ */
+function getProxyAgent(proxyUrl?: string): ProxyAgent | undefined {
+  const url = proxyUrl || process.env.DISCORD_PROXY;
+  if (!url) {
+    return undefined;
+  }
+  // ProxyAgent accepts string URL directly
+  return new ProxyAgent(url as any);
+}
+
+/**
  * Fetch PluralKit message information
- * 
+ *
  * @param messageId - Discord message ID
  * @param config - PluralKit configuration
+ * @param proxyUrl - Optional proxy URL
  * @returns PluralKitMessage or null if not a PluralKit message or API fails
  */
 export async function fetchPluralKitMessage(
   messageId: string,
-  config: PluralKitConfig
+  config: PluralKitConfig,
+  proxyUrl?: string
 ): Promise<PluralKitMessage | null> {
   if (!config.enabled) {
     return null;
@@ -57,9 +74,12 @@ export async function fetchPluralKitMessage(
   }
 
   try {
+    const agent = getProxyAgent(proxyUrl);
+
     const response = await fetch(`${PLURALKIT_API_BASE}/messages/${messageId}`, {
       method: 'GET',
       headers,
+      ...(agent ? { agent } : {}),
     });
 
     if (response.status === 404) {

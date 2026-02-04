@@ -12,6 +12,7 @@ import {
   DiscordMessage,
   GatewayIntent,
 } from './types';
+import { fetchPluralKitMessage } from './pluralkit';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
@@ -202,6 +203,10 @@ export function getDiscordPluginRuntime(): any {
 
 // Extract user ID from various target formats
 export function extractUserId(target: string): string | undefined {
+  // Check for channel: prefix first - not a user ID
+  if (target.startsWith('channel:')) {
+    return undefined;
+  }
   if (target.startsWith('discord:')) {
     const userId = target.slice('discord:'.length).trim();
     return userId || undefined;
@@ -338,13 +343,21 @@ const discordPlugin = {
         runtime.api = createApi(account.token!, proxyUrl);
       }
 
-      // Resolve channel ID (handle discord:userId and user:userId formats for DMs)
+      // Resolve channel ID (handle discord:userId, user:userId for DMs, and channel:channelId for guild channels)
       let channelId = to;
-      const userId = extractUserId(to);
-      if (userId) {
-        // Create DM channel for user
-        const dmChannel = await runtime.api!.createDm(userId);
-        channelId = dmChannel.id;
+
+      // Check for channel: prefix first (guild channel)
+      if (to.startsWith('channel:')) {
+        channelId = to.replace('channel:', '');
+      }
+      // Check for user formats (DM)
+      else {
+        const userId = extractUserId(to);
+        if (userId) {
+          // Create DM channel for user
+          const dmChannel = await runtime.api!.createDm(userId);
+          channelId = dmChannel.id;
+        }
       }
 
       try {
@@ -514,8 +527,39 @@ const discordPlugin = {
           // Ignore if runtime not available
         }
 
+        // Check for PluralKit/webhook messages - these should not be ignored
+        // PluralKit sends messages via webhook, which appear as bot messages
+        const isWebhookMessage = !!message.webhook_id;
+
+        // Query PluralKit information if enabled and message might be from PluralKit
+        const pluralkitConfig = (cfg as Record<string, unknown>)?.pluralkit as { enabled?: boolean; token?: string } | undefined;
+        let pkInfo: {
+          id: string;
+          sender?: string;
+          system?: { id: string; name?: string | null; tag?: string | null };
+          member?: { id: string; name?: string | null; display_name?: string | null };
+        } | null | undefined;
+
+        if (pluralkitConfig?.enabled) {
+          const proxyUrl = getProxyUrl(cfg);
+          try {
+            pkInfo = await fetchPluralKitMessage(message.id, {
+              enabled: true,
+              token: pluralkitConfig.token,
+            }, proxyUrl);
+
+            if (pkInfo) {
+              (message as DiscordMessage & { pkInfo: typeof pkInfo }).pkInfo = pkInfo;
+              log?.info(`[${PLUGIN_ID}:${accountId}] PluralKit: System=${pkInfo.system?.name || 'N/A'}, Member=${pkInfo.member?.display_name || pkInfo.member?.name || 'N/A'}, Real User=${pkInfo.sender || 'N/A'}`);
+            }
+          } catch (error) {
+            log?.info(`[${PLUGIN_ID}:${accountId}] PluralKit query failed: ${error}`);
+          }
+        }
+
         // Check if message should be ignored (bot messages, etc.)
-        if (message.author.bot) {
+        // BUT: PluralKit/webhook messages should NOT be ignored - they are proxy messages
+        if (message.author.bot && !isWebhookMessage && !pkInfo) {
           log?.info(`[${PLUGIN_ID}:${accountId}] Ignoring bot message`);
           return;
         }
@@ -701,10 +745,30 @@ const discordPlugin = {
                     log?.info(`[${PLUGIN_ID}:${accountId}] Created new API instance`);
                   }
 
-                  // Send reply via API
+  // Send reply via API
                   if (replyText.trim()) {
-                    await rt.api.createMessage(message.channel_id, replyText, { message_reference: { message_id: message.id } });
-                    log?.info(`[${PLUGIN_ID}:${accountId}] Sent reply`);
+                    // For PluralKit messages in guild channels, mention the real sender
+                    let finalReplyText = replyText;
+                    const pkInfo = (message as DiscordMessage & { pkInfo?: { sender?: string } }).pkInfo;
+                    const isGuildChannel = !!message.guild_id;
+                    const isWebhookMessage = !!(message as DiscordMessage).webhook_id;
+                    const isPluralKitMessage = !!pkInfo;
+
+                    if (pkInfo?.sender && isGuildChannel) {
+                      // Prefix with mention to the real sender
+                      finalReplyText = `<@${pkInfo.sender}> ${replyText}`;
+                      log?.info(`[${PLUGIN_ID}:${accountId}] Replying with real sender mention: @${pkInfo.sender}`);
+                    }
+
+                    // For PluralKit/webhook messages, we cannot use message_reference
+                    // because PluralKit deletes the original message
+                    if (isPluralKitMessage || isWebhookMessage) {
+                      await rt.api.createMessage(message.channel_id, finalReplyText);
+                      log?.info(`[${PLUGIN_ID}:${accountId}] Sent reply (no reference for webhook/PluralKit)`);
+                    } else {
+                      await rt.api.createMessage(message.channel_id, finalReplyText, { message_reference: { message_id: message.id } });
+                      log?.info(`[${PLUGIN_ID}:${accountId}] Sent reply with reference`);
+                    }
                   }
 
                   // Record activity via clawdbot runtime
