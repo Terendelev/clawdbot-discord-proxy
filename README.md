@@ -1,353 +1,200 @@
 # Clawdbot Discord Proxy Plugin
 
-Discord channel plugin with proxy support for Clawdbot. Enables Discord messaging through SOCKS5 proxy for regions where Discord is blocked.
+Discord 频道插件，支持通过代理连接 Discord，适用于 Discord 被封锁的地区。
 
-## Features
+## 功能特性
 
-- **WebSocket Gateway** - Connect to Discord's real-time Gateway with heartbeat and auto-reconnect
-- **REST API** - Full REST API wrapper for Discord endpoints (messages, channels, reactions, DMs)
-- **Proxy Support** - HTTP proxy for REST API, SOCKS5 proxy for WebSocket Gateway
-- **Auto-Reconnect** - Automatic reconnection with exponential backoff on disconnect
-- **Message Events** - Ready, message, guild, and channel event handling
+- **WebSocket Gateway** - 通过代理连接 Discord 实时网关，支持心跳和自动重连
+- **REST API** - 完整的 Discord REST API 封装（消息、频道、反应、DM）
+- **代理支持** - HTTP/HTTPS 代理用于 REST API，SOCKS5 代理用于 WebSocket
+- **PluralKit 支持** - 自动识别和处理 PluralKit 代理消息
+- **执行审批** - 危险命令需要 Discord 审批确认
+- **文件上传** - 支持通过 Discord 发送文件和媒体
 
-## Requirements
+## 环境要求
 
 - Node.js 18+
 - npm 9+
-- A Discord bot token
-- SOCKS5 proxy (if Discord is blocked in your region)
+- Discord Bot Token
+- SOCKS5 代理（如果 Discord 被封锁）
 
-## Installation
+## 安装到 Clawdbot
 
-### 1. Clone and Build
+### 方式一：从源码安装（推荐）
 
 ```bash
+# 1. 克隆项目
 git clone https://github.com/Terendelev/clawdbot-discord-proxy.git
 cd clawdbot-discord-proxy
+
+# 2. 安装依赖并编译
 npm install
 npm run build
+
+# 3. 复制到 Clawdbot 插件目录
+cp -r dist ~/.clawdbot/extensions/clawdbot-discord-proxy/
+
+# 4. 重启 Gateway
+clawdbot gateway restart
 ```
 
-### 2. Configure Clawdbot
+### 方式二：手动安装
 
-Add to your `~/.clawdbot/clawdbot.json`:
+```bash
+# 1. 编译项目
+cd /home/tom/codes
+npm run build
+
+# 2. 复制编译产物
+cp dist/index.js dist/index.d.ts ~/.clawdbot/extensions/clawdbot-discord-proxy/dist/
+
+# 3. 重启 Gateway
+clawdbot gateway restart
+```
+
+## 配置 Clawdbot
+
+编辑 `~/.clawdbot/clawdbot.json`，在 `channels` 和 `plugins` 部分添加配置：
 
 ```json
 {
   "channels": {
     "clawdbot-discord-proxy": {
-      "enabled": true,
       "accounts": {
         "default": {
           "token": "YOUR_DISCORD_BOT_TOKEN",
           "enabled": true,
-          "name": "Discord Bot"
+          "name": "Clawdbot Discord"
         }
       },
       "proxyConfig": {
-        "httpUrl": "http://PROXY_IP:PROXY_HTTP_PORT",
-        "httpsUrl": "http://PROXY_IP:PROXY_HTTP_PORT",
-        "wsUrl": "socks5://PROXY_IP:PROXY_SOCKS_PORT",
-        "wssUrl": "socks5://PROXY_IP:PROXY_SOCKS_PORT",
+        "httpUrl": "http://PROXY_IP:HTTP_PORT",
+        "httpsUrl": "http://PROXY_IP:HTTP_PORT",
+        "wsUrl": "socks5://PROXY_IP:SOCKS_PORT",
+        "wssUrl": "socks5://PROXY_IP:SOCKS_PORT",
         "noProxy": ["localhost", "127.0.0.1"]
+      },
+      "pluralkit": {
+        "enabled": true
+      },
+      "approvals": {
+        "enabled": true,
+        "approvers": ["DISCORD_USER_ID"],
+        "timeoutSeconds": 60
       }
     }
   },
   "plugins": {
     "entries": {
       "clawdbot-discord-proxy": {
-        "enabled": true,
-        "source": "path",
-        "sourcePath": "/path/to/clawdbot-discord-proxy"
+        "enabled": true
       }
     }
   }
 }
 ```
 
-### 3. Set Discord Bot Permissions
+### 配置说明
 
-Your bot needs these permissions:
-- `Send Messages`
-- `Read Message History`
-- `Manage Messages` (optional)
-- `Add Reactions` (optional)
+| 配置项 | 说明 |
+|--------|------|
+| `token` | Discord Bot Token |
+| `httpUrl` / `httpsUrl` | HTTP/HTTPS 代理地址（REST API 用） |
+| `wsUrl` / `wssUrl` | SOCKS5 代理地址（WebSocket 用） |
+| `pluralkit.enabled` | 是否启用 PluralKit 支持 |
+| `approvals.enabled` | 是否启用执行审批 |
+| `approvers` | 有审批权限的 Discord 用户 ID 列表 |
 
-### 4. Invite Bot to Server
+## Discord Bot 权限配置
 
-Use this URL format (replace `YOUR_CLIENT_ID` and `YOUR_PERMISSIONS`):
+Bot 需要以下权限：
+- `Send Messages` - 发送消息
+- `Read Message History` - 读取消息历史
+- `Manage Messages` - 管理消息（可选）
+- `Add Reactions` - 添加反应（可选）
 
+邀请链接格式：
 ```
 https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=YOUR_PERMISSIONS&scope=bot
 ```
 
-## Configuration Reference
+## 发送消息
 
-### Channel Configuration
+### 使用 CLI
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `channels.clawdbot-discord-proxy.accounts` | object | Yes | Account configurations |
-| `channels.clawdbot-discord-proxy.proxyConfig` | object | No | Proxy settings |
-| `proxyConfig.httpUrl` | string | No | HTTP/HTTPS proxy URL |
-| `proxyConfig.wssUrl` | string | No | SOCKS5 proxy URL for WebSocket |
+```bash
+# 发送文本消息
+clawdbot message send -m "Hello" -t user:USER_ID --channel clawdbot-discord-proxy
 
-### Account Configuration
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `token` | string | Yes | Discord bot token |
-| `enabled` | boolean | Yes | Enable this account |
-| `name` | string | No | Account display name |
-
-### Proxy Configuration
-
-The plugin requires different proxy types for different connections:
-
-| Connection Type | Proxy Type | Configuration Field |
-|----------------|------------|---------------------|
-| REST API | HTTP/HTTPS | `proxyConfig.httpUrl` or `proxyConfig.httpsUrl` |
-| WebSocket Gateway | SOCKS5 | `proxyConfig.wssUrl` (preferred) or `proxyConfig.wsUrl` |
-
-**Example with proxy:**
-```json
-{
-  "proxyConfig": {
-    "httpUrl": "http://192.168.1.1:7890",
-    "httpsUrl": "http://192.168.1.1:7890",
-    "wsUrl": "socks5://192.168.1.1:7891",
-    "wssUrl": "socks5://192.168.1.1:7891"
-  }
-}
+# 发送文件
+clawdbot message send --media "/path/to/file.jpg" -m "Image" -t user:USER_ID --channel clawdbot-discord-proxy
 ```
 
-## Architecture
+### 使用 curl（推荐用于文件）
+
+```bash
+# 获取 Token
+TOKEN=$(cat ~/.clawdbot/clawdbot-proxy.json | grep -o '"token": "[^"]*' | cut -d'"' -f4 | head -1)
+
+# 发送文件
+curl -X POST "https://discord.com/api/v10/channels/CHANNEL_ID/messages" \
+  -H "Authorization: Bot $TOKEN" \
+  -F "file=@/path/to/file" \
+  -F "content=Your message"
+```
+
+## 目录结构
 
 ```
 clawdbot-discord-proxy/
 ├── src/
-│   ├── index.ts           # Main plugin (Clawdbot integration)
-│   ├── channel.ts         # Channel Plugin class
-│   ├── gateway.ts         # Discord Gateway (WebSocket)
-│   ├── api.ts             # Discord REST API client
-│   ├── config.ts          # Configuration parsing
-│   ├── types.ts           # TypeScript type definitions
-│   └── tests/
-│       ├── unit/
-│       └── integration/
-├── dist/                  # Compiled JavaScript
-├── openclaw.plugin.json   # Plugin manifest
-└── package.json
+│   ├── index.ts           # 主入口，Clawdbot 集成
+│   ├── channel.ts         # Channel Plugin 实现
+│   ├── gateway.ts         # Discord WebSocket Gateway
+│   ├── api.ts             # Discord REST API 客户端
+│   ├── config.ts          # 配置解析
+│   ├── types.ts           # TypeScript 类型定义
+│   ├── pluralkit.ts       # PluralKit API 客户端
+│   ├── commands/          # 斜杠命令模块
+│   └── approvals/         # 执行审批模块
+├── dist/                  # 编译输出
+├── package.json
+└── README.md
 ```
 
-### Core Components
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Clawdbot Core                            │
-│                  (channel.reply, etc.)                      │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│              DiscordChannelPlugin (channel.ts)              │
-│                    Implements ChannelPlugin                 │
-└─────────────────────────────────────────────────────────────┘
-                    │                    │
-                    ▼                    ▼
-┌────────────────────────────────┐  ┌───────────────────────────┐
-│     DiscordGateway (gateway.ts)│  │  DiscordApi (api.ts)     │
-│  - WebSocket Connection        │  │  - REST API Calls         │
-│  - Heartbeat/Keep-Alive        │  │  - Messages               │
-│  - Auto-Reconnect              │  │  - Channels               │
-│  - Event Emitter               │  │  - Reactions              │
-└────────────────────────────────┘  └───────────────────────────┘
-         │
-         ▼ (SOCKS5 Proxy)
-┌────────────────────────────────┐
-│   Discord Gateway (wss://...)  │
-│   via SOCKS5 Proxy             │
-└────────────────────────────────┘
-```
-
-### Data Flow
-
-```
-Incoming Message:
-Discord Gateway → handleMessage → handleDispatch → emit('message')
-                    → channel.reply.dispatchReplyWithBufferedBlockDispatcher
-                    → Agent Response → DiscordApi.createMessage
-
-Outgoing Message:
-clawdbot → outbound.sendText → DiscordApi.createMessage
-```
-
-## API Usage
-
-### Using as Clawdbot Plugin
-
-The plugin integrates automatically with Clawdbot. Messages are routed through the standard Clawdbot channel interface.
-
-### Direct Usage (Standalone)
-
-```typescript
-import { DiscordGateway, createGateway } from './gateway';
-import { DiscordApi, createApi } from './api';
-import { GatewayIntent } from './types';
-
-// Create Gateway with proxy support
-const gateway = createGateway({
-  token: 'YOUR_DISCORD_TOKEN',
-  proxyUrl: 'socks5://PROXY_IP:PROXY_PORT',  // SOCKS5 for WebSocket
-  intents: [
-    GatewayIntent.GUILDS,
-    GatewayIntent.GUILD_MESSAGES,
-    GatewayIntent.DIRECT_MESSAGES,
-    GatewayIntent.MESSAGE_CONTENT,
-  ],
-  autoReconnect: true,
-  heartbeatInterval: 45000,
-});
-
-// Handle events
-gateway.on('ready', (data) => {
-  console.log(`Connected as ${data.user.username}#${data.user.discriminator}`);
-});
-
-gateway.on('message', (message) => {
-  console.log(`[${message.author.username}] ${message.content}`);
-});
-
-gateway.on('reconnecting', () => {
-  console.log('Attempting to reconnect...');
-});
-
-gateway.on('reconnected', () => {
-  console.log('Reconnected successfully');
-});
-
-gateway.on('reconnectFailed', ({ error }) => {
-  console.error('Reconnect failed:', error.message);
-});
-
-// Connect
-await gateway.connect();
-
-// Create API client for REST calls
-const api = createApi('YOUR_DISCORD_TOKEN', 'http://PROXY_IP:PROXY_PORT');
-
-// Send a message
-await api.createMessage('CHANNEL_ID', 'Hello from Clawdbot!');
-
-// Disconnect
-await gateway.disconnect();
-```
-
-### Gateway Events
-
-| Event | Data | Description |
-|-------|------|-------------|
-| `ready` | `{ user, guilds }` | Gateway connected and ready |
-| `message` | `DiscordMessage` | New message received |
-| `guildCreate` | `DiscordGuild` | Joined a guild |
-| `guildDelete` | `{ id, unavailable? }` | Left a guild |
-| `channelCreate` | `DiscordChannel` | Channel created |
-| `channelDelete` | `DiscordChannel` | Channel deleted |
-| `error` | `Error` | Connection error |
-| `closed` | `{ code, reason }` | Connection closed |
-| `reconnecting` | `void` | Attempting to reconnect |
-| `reconnected` | `void` | Reconnected successfully |
-| `reconnectFailed` | `{ error }` | Reconnect failed |
-
-## Development
-
-### Commands
+## 开发
 
 ```bash
-npm install          # Install dependencies
-npm run build        # Compile TypeScript to dist/
-npm run test         # Run all tests
-npm run test:unit    # Run unit tests only
-npm run lint         # Lint source files
+npm install          # 安装依赖
+npm run build        # 编译 TypeScript
+npm run test         # 运行测试
+npm run lint         # 代码检查
 ```
 
-### Testing
+## 常见问题
 
-Integration tests require environment variables:
+### 1. Gateway 连接超时
+- 检查 SOCKS5 代理是否正常运行
+- 验证 Bot Token 是否有效
+- 确保防火墙允许 WebSocket 连接
 
-```bash
-# Set test token and proxy
-export DISCORD_TEST_TOKEN="your_test_token"
-export DISCORD_WS_PROXY_URL="socks5://proxy_ip:port"
+### 2. 消息发送失败
+- 检查 Bot 是否有发送消息权限
+- 确认目标用户已有与 Bot 的 DM 频道
+- 查看日志：`tail -50 /tmp/clawdbot/clawdbot-*.log`
 
-npm run test
-```
+### 3. 代理配置不生效
+- 确认代理地址和端口正确
+- 检查 `noProxy` 列表是否包含必要地址
+- 验证代理类型（HTTP vs SOCKS5）
 
-### Proxy Connection Test
+## 相关链接
 
-Test your proxy configuration:
-
-```bash
-node -e "
-const WebSocket = require('ws');
-const { SocksProxyAgent } = require('socks-proxy-agent');
-
-const agent = new SocksProxyAgent('socks5://PROXY_IP:PROXY_PORT');
-const ws = new WebSocket('wss://gateway.discord.gg', { agent });
-
-ws.on('open', () => console.log('Connected!'));
-ws.on('message', (data) => console.log('Received:', data.toString().substring(0, 100)));
-ws.on('error', (err) => console.error('Error:', err.message));
-ws.on('close', () => console.log('Closed'));
-
-setTimeout(() => {
-  console.log('Test complete');
-  process.exit(0);
-}, 10000);
-"
-```
-
-## Troubleshooting
-
-### Gateway Connection Timeout
-
-1. Verify SOCKS5 proxy is running and accessible
-2. Check firewall allows outbound WebSocket connections
-3. Ensure bot token is valid and has correct permissions
-
-```bash
-# Test proxy connectivity
-curl -x socks5://PROXY_IP:PROXY_PORT -I https://discord.com/api
-```
-
-### Messages Not Being Received
-
-1. Verify intents include `GUILD_MESSAGES` and `MESSAGE_CONTENT`
-2. Check bot has permissions to read channel
-3. Review Clawdbot routing configuration
-
-### Auto-Reconnect Not Working
-
-1. Ensure `autoReconnect: true` in configuration
-2. Check logs for `reconnecting` and `reconnected` events
-3. Verify no `INVALID_INTENTS` close code (this disables reconnect)
-
-## Dependencies
-
-| Package | Purpose |
-|---------|---------|
-| `ws` | WebSocket client for Discord Gateway |
-| `proxy-agent` | Unified proxy support (HTTP, HTTPS, SOCKS4, SOCKS5) |
-| `socks-proxy-agent` | SOCKS5 proxy support for WebSocket |
+- [GitHub 仓库](https://github.com/Terendelev/clawdbot-discord-proxy)
+- [Clawdbot 文档](https://docs.clawd.bot)
+- [Discord Developer Portal](https://discord.com/developers/applications)
+- [PluralKit 文档](https://www.pluralkit.me/api/v2)
 
 ## License
 
-MIT License - see LICENSE file for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
+MIT License
