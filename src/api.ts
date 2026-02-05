@@ -90,8 +90,8 @@ async function httpRequest(
     // Use proxy agent if configured
     if (proxyUrl) {
       try {
-        const { ProxyAgent } = require('proxy-agent');
-        requestOptions.agent = new ProxyAgent(proxyUrl);
+        const { HttpsProxyAgent } = require('https-proxy-agent');
+        requestOptions.agent = new HttpsProxyAgent(proxyUrl);
       } catch {
         // Proxy agent not available, continue without proxy
       }
