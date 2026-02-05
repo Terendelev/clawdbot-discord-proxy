@@ -86,9 +86,9 @@ function getWsProxyUrl(cfg: Record<string, unknown>): string | undefined {
   return channelCfg?.proxyConfig?.wssUrl ?? channelCfg?.proxyConfig?.wsUrl;
 }
 
-// Local upload directory configuration
+// Local upload directory configuration (使用插件所在目录)
 const UPLOAD_CONFIG = {
-  uploadDir: '/home/tom/discord/upfile',
+  uploadDir: path.resolve(__dirname, '..', 'discord-uploads'),
 };
 
 /**
