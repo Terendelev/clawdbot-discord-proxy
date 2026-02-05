@@ -8,12 +8,12 @@ Discord 频道插件，支持通过代理连接 Discord，适用于 Discord 被�
 - **REST API** - 完整的 Discord REST API 封装（消息、频道、反应、DM）
 - **代理支持** - HTTP/HTTPS 代理用于 REST API，SOCKS5 代理用于 WebSocket
 - **PluralKit 支持** - 自动识别和处理 PluralKit 代理消息
-- **执行审批** - 危险命令需要 Discord 审批确认
+- **执行审批** - 危险命令需要 Discord 审批确认（暂未实现）
 - **文件上传** - 支持通过 Discord 发送文件和媒体
 
 ## 环境要求
 
-- Node.js 18+
+- Node.js 22+
 - npm 9+
 - Discord Bot Token
 - SOCKS5 代理（如果 Discord 被封锁）
@@ -32,25 +32,13 @@ npm install
 npm run build
 
 # 3. 复制到 Clawdbot 插件目录
-cp -r dist ~/.clawdbot/extensions/clawdbot-discord-proxy/
+cp -r ./ ~/.clawdbot/extensions/clawdbot-discord-proxy/
 
 # 4. 重启 Gateway
 clawdbot gateway restart
 ```
 
-### 方式二：手动安装
 
-```bash
-# 1. 编译项目
-cd /home/tom/codes
-npm run build
-
-# 2. 复制编译产物
-cp dist/index.js dist/index.d.ts ~/.clawdbot/extensions/clawdbot-discord-proxy/dist/
-
-# 3. 重启 Gateway
-clawdbot gateway restart
-```
 
 ## 配置 Clawdbot
 
@@ -130,18 +118,7 @@ clawdbot message send -m "Hello" -t user:USER_ID --channel clawdbot-discord-prox
 clawdbot message send --media "/path/to/file.jpg" -m "Image" -t user:USER_ID --channel clawdbot-discord-proxy
 ```
 
-### 使用 curl（推荐用于文件）
 
-```bash
-# 获取 Token
-TOKEN=$(cat ~/.clawdbot/clawdbot-proxy.json | grep -o '"token": "[^"]*' | cut -d'"' -f4 | head -1)
-
-# 发送文件
-curl -X POST "https://discord.com/api/v10/channels/CHANNEL_ID/messages" \
-  -H "Authorization: Bot $TOKEN" \
-  -F "file=@/path/to/file" \
-  -F "content=Your message"
-```
 
 ## 目录结构
 
