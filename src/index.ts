@@ -104,6 +104,21 @@ async function downloadFileToTemp(fileUrl: string, filename: string, proxyUrl?: 
 
   const tempFilePath = path.join(tempDir, `${Date.now()}-${filename}`);
 
+  // Use curl for cross-platform compatibility (macOS/Linux/Windows)
+  const proxyArg = proxyUrl ? `-x "${proxyUrl}"` : '';
+  const { execSync } = require('child_process');
+
+  try {
+    execSync(`curl -fsSL ${proxyArg} -o "${tempFilePath}" "${fileUrl}"`, {
+      timeout: 60000,
+    });
+    return tempFilePath;
+  } catch (err) {
+    throw new Error(`Download failed: ${(err as Error).message}`);
+  }
+
+  /*
+  // Original Node.js http/https implementation (kept for reference)
   // Check for proxy from environment if not provided
   if (!proxyUrl) {
     proxyUrl = process.env.DISCORD_PROXY;
@@ -160,6 +175,7 @@ async function downloadFileToTemp(fileUrl: string, filename: string, proxyUrl?: 
     });
     req.end();
   });
+  */
 }
 
 /**
